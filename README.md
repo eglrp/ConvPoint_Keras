@@ -3,7 +3,7 @@ Tensorflow Keras implementation of ConvPoint architecture used for large scale p
 
 |  Benchmark  | Original ConvPoint MIOU | Keras ConvPoint MIOU |
 | ----------- | ----------------------- | -------------------- |
-|  Semantic3D | 76.5%                   | 77.7%                |
+|  Semantic3D | 76.5%                   | **77.7%**            |
 |  NPM3D      | 75.6%                   | 72.0%                |
 
 
