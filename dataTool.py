@@ -1597,10 +1597,11 @@ def TestReadTimes():
     print("done reading npy in {}:{} min.".format(int((time() - t)/60), int((time() - t)%60))) #03:04
 
 def VisualizePointCloudClassesAsync(pcFile, lblFile = None, downSample = True, noLbl = False, windowName = ""):
-    if(not (lblFile is None)):
-        windowName = Paths.FileName(lblFile)
-    elif(windowName == ""):
-        windowName = Paths.FileName(pcFile)
+    if(len(windowName) == 0):
+        if(not (lblFile is None)):
+            windowName = Paths.FileName(lblFile)
+        else:
+            windowName = Paths.FileName(pcFile)
 
     p = Process(target=VisualizePointCloudClasses, args=(pcFile, lblFile, downSample, noLbl, windowName))
     p.start()

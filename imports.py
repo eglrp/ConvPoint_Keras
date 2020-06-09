@@ -2,6 +2,7 @@ import numpy as np
 from time import time
 import datetime
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import h5py
 
 import sys
@@ -74,6 +75,9 @@ class Paths:
     	    
     @staticmethod
     def GetFiles(folder, excludeFiles = None, onlyNames = False, withoutExtension = False, findExtesions = ('.hdf5', '.npy', '.las', '.ply', '.txt')):
+        if(isinstance(findExtesions, list)):
+            findExtesions = tuple(findExtesions)
+
         if(excludeFiles is None):
             excludeFiles = []
         if(not isinstance(excludeFiles, list)):

@@ -22,6 +22,10 @@ class Const:
             return True
         else: 
             return False
+    
+    testFiles = []
+    excludeFiles = []
+    Paths = Paths.Semantic3D
 
     nocolor = False
     fusion = False
@@ -38,6 +42,7 @@ class Const:
     name = ""
     voxel_data = False
     fullAugmentation = False
+    noScale = False
     noAugmentation = False
     augmentOnlyRgb = False
 
@@ -49,6 +54,8 @@ class Const:
     def Name(self):
         modelName = self.name
         
+        modelName += f"({len(self.TrainFiles())}&{len(self.TestFiles())})"
+
         if(consts.voxel_data == True):
             modelName += "(vox)"
         if(consts.nocolor == True):
@@ -60,6 +67,9 @@ class Const:
         
         if(consts.fullAugmentation == True):
             modelName += "(FullAugment)"
+
+        if(consts.noScale == True):
+            modelName += "(NoScale)"
         
         if(consts.noAugmentation == True):
             modelName += "(NoAugment)"
@@ -71,6 +81,12 @@ class Const:
             modelName += "(NormClass)"
         
         return modelName
+    
+    def TestFiles(self):
+        return Paths.JoinPaths(self.Paths.processedTrain, self.testFiles)
+
+    def TrainFiles(self):
+        return Paths.GetFiles(self.Paths.processedTrain, excludeFiles = self.TestFiles()+self.excludeFiles)
 
 class Semantic3D(Const):    
     if os.path.isdir("C:/Program Files"):
@@ -103,32 +119,41 @@ class NPM3D(Const):
         samplesFromFile = 241    
     pointComponents = 3
     featureComponents = 1
+    noScale = True
     classCount = Label.NPM3D.Count-1
     classNames = Label.NPM3D.Names
     test_step = 0.5
     name = "NPM3D"
-    Paths = Paths.NPM3D
+    Paths = Paths.NPM3D    
 
     testFiles = [
-                "Lille1_1_0.npy",
-                "Lille1_1_1.npy",
-                "Lille1_1_2.npy",
+                # "Lille1_1_0.npy",
+                # "Lille1_1_1.npy",
+                # "Lille1_1_2.npy",
+                # "Lille1_1_3.npy",
+                # "Lille1_1_4.npy",
+                # "Lille1_1_5.npy",
+                # "Lille1_1_6.npy",
+                # "Lille1_1_7.npy",
+                # "Lille1_1_8.npy",
 
                 # "Lille1_2_0.npy",
                 # "Lille1_2_1.npy",
                 
                 "Lille2_0.npy",
-                "Lille2_1.npy",        
-                "Lille2_2.npy",        
+                "Lille2_1.npy",
+                "Lille2_2.npy", 
+                "Lille2_8.npy", 
+                "Lille2_9.npy",                 
 
                 # "Paris_0.npy",
                 # "Paris_1.npy",
                 ]
     
     excludeFiles = [
-                    "Lille1_1_3.npy",
+                    # "Lille1_1_7.npy",
                     # "Lille1_2_2.npy",
-                    "Lille2_3.npy",
+                    "Lille2_10.npy",
                     # "Paris_2.npy",
                     ]
     
@@ -369,6 +394,17 @@ def ReadModel(modelPath):
     if(not modelPath.endswith(".h5")):
         modelPath += ".h5"
 
+    if(not os.path.exists(modelPath)):
+        if(os.path.exists(os.path.join("." , "data", modelPath))):
+            modelPath = os.path.join("." , "data", modelPath)
+        else:
+            file = os.path.basename(modelPath)
+            folder = os.path.join("." , "data", file.split("_")[0])
+            modelPath = os.path.join(folder, file)
+
+        if(not os.path.exists(modelPath)):
+            raise FileNotFoundError    
+
     model = tf.keras.models.load_model(modelPath, compile=False,
         custom_objects={'NearestNeighborsLayer': NearestNeighborsLayer, 
                         'SampleNearestNeighborsLayer': SampleNearestNeighborsLayer,
@@ -382,8 +418,14 @@ def ReadModel(modelPath):
     print("{} model loaded".format(modelPath))
     return model
 
+def LatestModel(path):
+    if(not os.path.isdir(path)):
+        path = os.path.join("." , "data", os.path.basename(path).split("_")[0])    
+    latestModel = max(Paths.GetFiles(path, findExtesions=".h5"), key=os.path.getctime)
+    return latestModel
+
 def LoadModel(modelPath, consts):
-    model = ReadModel(modelPath)    
+    model = ReadModel(modelPath)
 
     modified = False
     if(model.output.shape[2] != consts.classCount):
@@ -404,12 +446,11 @@ def ParseModelConfig(file):
     if(config[0] == Semantic3D.name):
         consts = Semantic3D()
     
-    # if(config[1] == "RGB"):
-        # nothing to do  
-    if(config[1] == "NOCOL"):
-        consts.nocolor = True
-    if(config[1] == "fusion"):
-        consts.fusion = True
+    for conf in config[1:]:
+        if(conf == "NOCOL"):
+            consts.nocolor = True
+        elif(conf == "fusion"):
+            consts.fusion = True
 
     return consts
 
@@ -755,6 +796,13 @@ def JitterRGB(features, fullAugmentation = False):
     new_features = np.array(img).reshape((-1, 3))
     return new_features
 
+def JitterReflectance(features, sigma=40): #input [0; 255]
+    assert(features.shape[1] == 1)
+    randJitters = np.random.randint(-sigma, sigma, size = features.shape)
+    features += randJitters
+    features = np.clip(features, 0, 255)
+    return features
+
 def JitterPoints(points, sigma=0.01):
     """ Randomly jitter points. jittering is per point.
         Input:
@@ -800,6 +848,7 @@ class TrainSequence(Sequence):
         self.fusion = consts.fusion
         self.fullAugmentation = consts.fullAugmentation
         self.augmentOnlyRgb = consts.augmentOnlyRgb
+        self.noScale = consts.noScale
 
     def __len__(self):
         return int(self.iterations)
@@ -886,11 +935,15 @@ class TrainSequence(Sequence):
                 if(not self.augmentOnlyRgb):
                     temppts = RotatePointCloud(temppts)
                     if(self.fullAugmentation):
-                        temppts = ScalePoints(temppts)
-                        temppts = JitterPoints(temppts)
+                        if(not self.noScale):
+                            temppts = ScalePoints(temppts)
+                        temppts = JitterPoints(temppts, sigma = 0.001 if self.noScale else 0.01)
 
-                if(not self.nocolor and self.features_count == 3):
-                    tempfts = JitterRGB(tempfts, self.fullAugmentation or self.augmentOnlyRgb)
+                if(not self.nocolor):
+                    if(self.features_count == 3):
+                        tempfts = JitterRGB(tempfts, self.fullAugmentation or self.augmentOnlyRgb)
+                    elif(self.features_count == 1):
+                        tempfts = JitterReflectance(tempfts)
                                 
             if(not self.nocolor):
                 tempfts = tempfts.astype(np.float32)
@@ -1035,7 +1088,7 @@ def GenerateData(modelPath, testFiles, consts, outputFolder, NameIncludeModelInf
     model, _ = LoadModel(modelPath, consts)
 
     if(not NameIncludeModelInfo):
-        outputFolder = outputFolder + "_" + Paths.FileName(modelPath)
+        outputFolder = os.path.join(outputFolder, Paths.FileName(modelPath))
     os.makedirs(outputFolder, exist_ok=True)
 
     for file in testFiles:
@@ -1478,48 +1531,36 @@ if __name__ == "__main__":
     from NearestNeighbors import NearestNeighborsLayer, SampleNearestNeighborsLayer
     from KDTree import KDTreeLayer, KDTreeSampleLayer
 
-    # consts = NPM3D()
-    consts = Semantic3D()
+    consts = NPM3D()
+    # consts = Semantic3D()
     # consts.nocolor = True
-    # consts.fusion = True
+    consts.fusion = True
     # consts.normalizeClasses = True
     consts.fullAugmentation = True
     # consts.noAugmentation = True
     # consts.augmentOnlyRgb = True
-    trainFiles = []
-    testFiles = []
+    consts.noScale = False
+    testFiles = consts.TestFiles()
+    trainFiles = consts.TrainFiles()    
+
+    # modelPath = "NPM3D(80&5)(RGB)(FullAugment)_19_train(85.9)_val(72.8).h5"
+    modelPath = ["NPM3D(80&5)(RGB)(NoScale)_28_train(88.3)_val(73.2).h5", "NPM3D(80&5)(NOCOL)(FullAugment)_28_train(87.3)_val(71.5).h5"]
+    # modelPath = LatestModel(consts.Name())
+
+    if(isinstance(modelPath,list)):
+        consts.fusion = True
 
     if(not consts.fusion and not Const.IsWindowsMachine()):
         tf.config.optimizer.set_jit(True) #Gives more than 10% boost!!!
         print("XLA enabled.")
 
-    testFiles = Paths.JoinPaths(consts.Paths.processedTrain, consts.testFiles)
-    trainFiles = Paths.GetFiles(consts.Paths.processedTrain, excludeFiles = testFiles+consts.excludeFiles)
-
-    # modelPath = "./data/Sem3D(vox)(RGB)/Sem3D(vox)(RGB)_59_train(85.8)_val(79.5).h5"
-    # modelPath = "./data/Sem3D(vox)(RGB)(FullAugment)/Sem3D(vox)(RGB)(FullAugment)_55_train(85.7)_val(79.9).h5"    
-    # modelPath = "./data/Sem3D(vox)(RGB)(RGBAugment)/Sem3D(vox)(RGB)(RGBAugment)_49_train(87.0)_val(74.8).h5"
-    # modelPath = "./data/Sem3D(vox)(fusion)(FullAugment)/Sem3D(vox)(fusion)(FullAugment)_3_train(86.2)_val(79.5).h5"
-    # modelPath = "./data/NPM3D(RGB)/NPM3D(RGB)_55_train(91.7)_val(91.2).h5"
-    # modelPath = "./data/NPM3D(vox)(NOCOL)/NPM3D(vox)(NOCOL)_51_train(89.4)_val(79.4).h5"
-    # modelPath = "./data/NPM3D(NOCOL)/NPM3D(NOCOL)_47_train(92.6)_val(89.2).h5"
-    # modelPath = "./data/NPM3D(fusion)/NPM3D(fusion)_7_train(92.4)_val(93.4).h5"
-    # modelPath = ["./data/Sem3D(vox)(RGB)(FullAugment)/Sem3D(vox)(RGB)(FullAugment)_55_train(85.7)_val(79.9).h5", "./data/Sem3D(NOCOL)/Sem3D(NOCOL)_50_train(87.4)_val(69.1).h5"]
-    # modelPath = ["./data/NPM3D(RGB)/NPM3D(RGB)_55_train(91.7)_val(91.2).h5", "./data/NPM3D(NOCOL)/NPM3D(NOCOL)_39_train(91.4)_val(87.8).h5"]
-    # modelPath = ["./data/Sem3D(NOCOL)/Sem3D(NOCOL)_50_train(87.4)_val(69.1).h5", "./data/NPM3D(vox)(NOCOL)/NPM3D(vox)(NOCOL)_51_train(89.4)_val(79.4).h5"]
-    # modelPath = "./data/Sem3D(NOCOL)/Sem3D(NOCOL)_50_train(87.4)_val(69.1)"
-
-    if(isinstance(modelPath,list)):
-        consts.fusion = True    
-
-    # TrainModel(trainFiles, testFiles, consts, saveDir=Paths.dataPath, modelPath = modelPath, modelNamePrefix=consts.Name())
-    TrainModel(trainFiles, testFiles, consts, saveDir=Paths.dataPath, modelNamePrefix=consts.Name())
+    TrainModel(trainFiles, testFiles, consts, saveDir=Paths.dataPath, modelPath = modelPath, modelNamePrefix=consts.Name()) #continue train
+    # TrainModel(trainFiles, testFiles, consts, saveDir=Paths.dataPath, modelNamePrefix=consts.Name()) #new model
 
     #NPM3D
     # GenerateData(modelPath, Paths.GetFiles(consts.Paths.rawTest), consts, consts.Paths.generatedTest)
     
     #Semantic3D
     # GenerateLargeData(modelPath, [Paths.Semantic3D.processedTest+"sg28_station2_intensity_rgb_voxels.npy"], Paths.Semantic3D.rawTest, consts, consts.Paths.generatedTest, Upscale=False)
-    GenerateLargeData(modelPath, Paths.Semantic3D.processedTest, Paths.Semantic3D.rawTest, consts, consts.Paths.generatedTest, Upscale=False)
-
-    UpscaleFilesAsync(modelPath, Paths.Semantic3D.processedTest, Paths.Semantic3D.rawTest, Paths.Semantic3D.generatedTest)
+    # GenerateLargeData(modelPath, Paths.Semantic3D.processedTest, Paths.Semantic3D.rawTest, consts, consts.Paths.generatedTest, Upscale=False)
+    # UpscaleFilesAsync(modelPath, Paths.Semantic3D.processedTest, Paths.Semantic3D.rawTest, Paths.Semantic3D.generatedTest)
