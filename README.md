@@ -1,5 +1,5 @@
 # ConvPoint_Keras
-Tensorflow Keras implementation of ConvPoint architecture used for large scale point cloud semantic segmentation.
+Tensorflow 2.2 Keras implementation of ConvPoint neural network architecture used for large scale point cloud semantic segmentation.
 
 |  Benchmark  | Original ConvPoint MIOU | Keras ConvPoint MIOU |
 | ----------- | ----------------------- | -------------------- |
@@ -9,4 +9,3 @@ Tensorflow Keras implementation of ConvPoint architecture used for large scale p
 
 #### Disclaimer ####
 Code is not release ready and was used to train models in Google Colab environment. \
-Tensorflow version: 2.2
