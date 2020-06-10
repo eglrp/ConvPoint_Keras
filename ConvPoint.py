@@ -424,6 +424,18 @@ def LatestModel(path):
     latestModel = max(Paths.GetFiles(path, findExtesions=".h5"), key=os.path.getctime)
     return latestModel
 
+import re
+def ModelValMIOU(path):
+    result = re.findall("val\((.+)\)", path)
+    return float(result[0])
+
+def HighestValMIOUModel(path):
+    if(not os.path.isdir(path)):
+        path = os.path.join("." , "data", os.path.basename(path).split("_")[0])
+
+    latestModel = max(Paths.GetFiles(path, findExtesions=".h5"), key=ModelValMIOU)
+    return latestModel
+
 def LoadModel(modelPath, consts):
     model = ReadModel(modelPath)
 
@@ -704,7 +716,7 @@ def GetValidationData(testFiles, consts, batchesCount = 100):
     else:
         return ([ftsList, ptsList], lbsList)
         
-def TrainModel(trainFiles, testFiles, consts, modelPath = None, saveDir = None, classes = None, modelNamePrefix = "", first_epoch = 0, sendNotifications = False):
+def TrainModel(trainFiles, testFiles, consts, modelPath = None, saveDir = None, classes = None, modelNamePrefix = "", first_epoch = 0, epochs = None, sendNotifications = False):
     print("Train {} on {} files. Test on {} files".format(consts.Name(), len(trainFiles), len(testFiles)))
     print("Validate on :", testFiles)
     model = None    
@@ -734,9 +746,11 @@ def TrainModel(trainFiles, testFiles, consts, modelPath = None, saveDir = None, 
     
     seq = TrainSequence(trainFiles, trainingSteps, consts)
     validationData = None if len(testFiles) == 0 else GetValidationData(testFiles, consts, 150 if not Const.IsWindowsMachine() else 10)
-    epoch = 20 if consts.fusion else 100
 
-    model.fit(seq, validation_data = validationData, epochs = epoch, workers = consts.batchSize, max_queue_size = 300, callbacks=callbacks_list, initial_epoch = first_epoch)
+    if(epochs is None):
+        epochs = 20 if consts.fusion else 100
+
+    model.fit(seq, validation_data = validationData, epochs = epochs, workers = consts.batchSize, max_queue_size = 300, callbacks=callbacks_list, initial_epoch = first_epoch)
 
 def EvaluateModels(modelsList, testFiles, consts, x = None, y = None):
     if(x is None or y is None):
@@ -1541,12 +1555,12 @@ if __name__ == "__main__":
     # consts.augmentOnlyRgb = True
     consts.noScale = False
     testFiles = consts.TestFiles()
-    trainFiles = consts.TrainFiles()    
+    trainFiles = consts.TrainFiles()
 
     # modelPath = "NPM3D(80&5)(RGB)(FullAugment)_19_train(85.9)_val(72.8).h5"
-    modelPath = ["NPM3D(80&5)(RGB)(NoScale)_28_train(88.3)_val(73.2).h5", "NPM3D(80&5)(NOCOL)(FullAugment)_28_train(87.3)_val(71.5).h5"]
-    # modelPath = LatestModel(consts.Name())
-
+    # modelPath = ["NPM3D(80&5)(RGB)(NoScale)_28_train(88.3)_val(73.2).h5", "NPM3D(80&5)(NOCOL)(FullAugment)_28_train(87.3)_val(71.5).h5"]
+    modelPath = LatestModel("NPM3D(80&5)(fusion)(FullAugment)")
+    
     if(isinstance(modelPath,list)):
         consts.fusion = True
 
@@ -1554,11 +1568,13 @@ if __name__ == "__main__":
         tf.config.optimizer.set_jit(True) #Gives more than 10% boost!!!
         print("XLA enabled.")
 
-    TrainModel(trainFiles, testFiles, consts, saveDir=Paths.dataPath, modelPath = modelPath, modelNamePrefix=consts.Name()) #continue train
+    TrainModel(trainFiles, testFiles, consts, saveDir=Paths.dataPath, modelPath = modelPath, modelNamePrefix=consts.Name(), epochs = 8) #continue train
     # TrainModel(trainFiles, testFiles, consts, saveDir=Paths.dataPath, modelNamePrefix=consts.Name()) #new model
 
+    modelPath = HighestValMIOUModel("NPM3D(80&5)(fusion)(FullAugment)")
+
     #NPM3D
-    # GenerateData(modelPath, Paths.GetFiles(consts.Paths.rawTest), consts, consts.Paths.generatedTest)
+    GenerateData(modelPath, Paths.GetFiles(consts.Paths.rawTest), consts, consts.Paths.generatedTest)
     
     #Semantic3D
     # GenerateLargeData(modelPath, [Paths.Semantic3D.processedTest+"sg28_station2_intensity_rgb_voxels.npy"], Paths.Semantic3D.rawTest, consts, consts.Paths.generatedTest, Upscale=False)
