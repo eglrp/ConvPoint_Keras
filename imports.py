@@ -122,8 +122,11 @@ class Paths:
         return modelFiles[index][0]
 
     @staticmethod
-    def FileName(path):
-        return os.path.splitext(os.path.basename(path))[0]
+    def FileName(path, withoutExt = True):
+        name = os.path.basename(path)
+        if(withoutExt):
+            name = os.path.splitext(name)[0]
+        return name
             
 class Label:
     class Semantic3D:

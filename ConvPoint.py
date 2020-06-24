@@ -23,16 +23,20 @@ class Const:
         else: 
             return False
     
+    if os.path.isdir("C:/Program Files"):
+        batchSize = 8
+    else:
+        batchSize = 16 #25
+
+    #Placeholders
+    classCount = Label.Semantic3D.Count-1
+    classNames = Label.Semantic3D.Names
+
     testFiles = []
     excludeFiles = []
     Paths = Paths.Semantic3D
-
-    nocolor = False
-    fusion = False
-    normalizeClasses = False
+    
     epochs = 100
-    batchSize = 4
-    samplesFromFile = 30
     pointComponents = 3
     featureComponents = 3 #rgb    
     classCount = 0
@@ -40,59 +44,108 @@ class Const:
     blocksize = 8
     test_step = 0.5
     name = ""
-    voxel_data = False
-    fullAugmentation = False
-    noScale = False
-    noAugmentation = False
-    augmentOnlyRgb = False
+
+    #Algorithm configuration
+    noFeature = False
+    Fusion = False
+    Scale = False
+    Rotate = False
+    Mirror = False
+    Jitter = False
+    FtrAugment = False
 
     logsPath = "./logs"
     ### MODEL CONFIG
     pl = 64
     ### MODEL CONFIG
 
-    def Name(self):
+    def BuildSpecDict(self):
+        return {"noFeature" : self.noFeature,
+                "Fusion" : self.Fusion,
+                "Scale" : self.Scale,
+                "Rotate" : self.Rotate,
+                "Mirror" : self.Mirror,
+                "Jitter" : self.Jitter,
+                "FtrAugment" : False if self.noFeature else self.FtrAugment,
+                }
+
+    def Name(self, UID = ""):
         modelName = self.name
         
         modelName += f"({len(self.TrainFiles())}&{len(self.TestFiles())})"
 
-        if(consts.voxel_data == True):
-            modelName += "(vox)"
-        if(consts.nocolor == True):
-            modelName += "(NOCOL)"
-        elif(consts.fusion == True):
-            modelName += "(fusion)"
-        else:
-            modelName += "(RGB)"
-        
-        if(consts.fullAugmentation == True):
-            modelName += "(FullAugment)"
+        for spec, value in self.BuildSpecDict().items():
+            if(value == True):
+                modelName += f"({spec})"
 
-        if(consts.noScale == True):
-            modelName += "(NoScale)"
-        
-        if(consts.noAugmentation == True):
-            modelName += "(NoAugment)"
+        if(UID != ""):
+            modelName += f"_{UID}"
 
-        if(consts.augmentOnlyRgb == True):
-            modelName += "(RGBAugment)"
-
-        if(consts.normalizeClasses == True):
-            modelName += "(NormClass)"
-        
         return modelName
     
+    @staticmethod
+    def RemoveUID(name : str):
+        return name.replace(f"_{Const.ParseModelUID(name)}", "")
+    
+    @staticmethod
+    def UID():
+        import uuid
+        return uuid.uuid4().hex
+    
+    @staticmethod
+    def ParseModelConfig(file):
+        config = Paths.FileName(file).split("_")[0].replace("("," ").replace(")","").replace("vox ","").split(" ")
+
+        const = None
+        if(config[0] == NPM3D.name):
+            const = NPM3D()            
+        if(config[0] == Semantic3D.name):
+            const = Semantic3D()
+        
+        for conf in config[1:]:
+            if conf == "noFeature" or conf == "NOCOL":
+                const.noFeature = True
+            elif conf == "Fusion":
+                const.Fusion = True
+            elif conf == "Scale":
+                const.Scale = True
+            elif conf == "Rotate":
+                const.Rotate = True
+            elif conf == "Mirror":
+                const.Mirror = True
+            elif conf == "Jitter":
+                const.Jitter = True
+            elif conf == "FtrAugment":
+                const.FtrAugment = True
+         
+        return const
+    
+    @staticmethod
+    def ParseModelUID(file):
+        parts = Paths.FileName(file).split("_")
+
+        if(len(parts) >= 2):
+            return parts[1]
+        else:
+            return None
+
+    @staticmethod
+    def ParseModelName(file, withUID = True):
+        parts = Paths.FileName(file, withoutExt = False).split("_")
+
+        name = parts[0]
+        if(withUID and len(parts) > 1):
+            name += "_"+parts[1]
+
+        return name
+
     def TestFiles(self):
         return Paths.JoinPaths(self.Paths.processedTrain, self.testFiles)
 
     def TrainFiles(self):
         return Paths.GetFiles(self.Paths.processedTrain, excludeFiles = self.TestFiles()+self.excludeFiles)
 
-class Semantic3D(Const):    
-    if os.path.isdir("C:/Program Files"):
-        batchSize = 8
-    else:
-        batchSize = 16 #16
+class Semantic3D(Const):        
     pointComponents = 3
     featureComponents = 3 #rgb
     classCount = Label.Semantic3D.Count-1
@@ -100,7 +153,6 @@ class Semantic3D(Const):
     test_step = 0.8
     name = "Sem3D"
     Paths = Paths.Semantic3D
-    voxel_data = True
 
     testFiles = [
                 "untermaederbrunnen_station3_xyz_intensity_rgb_voxels.npy",
@@ -108,18 +160,27 @@ class Semantic3D(Const):
                 ]
 
     excludeFiles = []
+
+    fileNames = {"birdfountain_station1_xyz_intensity_rgb" : "birdfountain1",
+                "castleblatten_station1_intensity_rgb" : "castleblatten1",
+                "castleblatten_station5_xyz_intensity_rgb" : "castleblatten5",
+                "marketplacefeldkirch_station1_intensity_rgb" : "marketsquarefeldkirch1",
+                "marketplacefeldkirch_station4_intensity_rgb" : "marketsquarefeldkirch4",
+                "marketplacefeldkirch_station7_intensity_rgb" : "marketsquarefeldkirch7",
+                "sg27_station3_intensity_rgb" : "sg27_3",
+                "sg27_station6_intensity_rgb" : "sg27_6",
+                "sg27_station8_intensity_rgb" : "sg27_8",
+                "sg27_station10_intensity_rgb" : "sg27_10",
+                "sg28_station2_intensity_rgb" : "sg28_2",
+                "sg28_station5_xyz_intensity_rgb" : "sg28_5",
+                "stgallencathedral_station1_intensity_rgb" : "stgallencathedral1",
+                "stgallencathedral_station3_intensity_rgb" : "stgallencathedral3",
+                "stgallencathedral_station6_intensity_rgb" : "stgallencathedral6",
+                }
         
 class NPM3D(Const):
-    if os.path.isdir("C:/Program Files"):
-        batchSize = 8
-        samplesFromFile = 2
-        validateSamples = -1
-    else:
-        batchSize = 16 #25
-        samplesFromFile = 241    
     pointComponents = 3
     featureComponents = 1
-    noScale = True
     classCount = Label.NPM3D.Count-1
     classNames = Label.NPM3D.Names
     test_step = 0.5
@@ -156,10 +217,6 @@ class NPM3D(Const):
                     "Lille2_10.npy",
                     # "Paris_2.npy",
                     ]
-    
-    def SetVoxelData(self):        
-        self.voxel_data = True
-        self.Paths.processedTrain = self.Paths.processedTrainVoxels
 
 class WeightsMul(tf.keras.layers.Layer):
     def __init__(self, shape, lowBound, highBound, **kwargs):
@@ -397,9 +454,13 @@ def ReadModel(modelPath):
     if(not os.path.exists(modelPath)):
         if(os.path.exists(os.path.join("." , "data", modelPath))):
             modelPath = os.path.join("." , "data", modelPath)
-        else:
+        elif(os.path.exists(os.path.join("." , "data", Const.ParseModelName(modelPath, False)))):
             file = os.path.basename(modelPath)
-            folder = os.path.join("." , "data", file.split("_")[0])
+            folder = os.path.join("." , "data", Const.ParseModelName(modelPath, False))
+            modelPath = os.path.join(folder, file)
+        elif(os.path.exists(os.path.join("." , "data", Const.ParseModelName(modelPath)))):
+            file = os.path.basename(modelPath)
+            folder = os.path.join("." , "data", Const.ParseModelName(modelPath))
             modelPath = os.path.join(folder, file)
 
         if(not os.path.exists(modelPath)):
@@ -419,9 +480,21 @@ def ReadModel(modelPath):
     return model
 
 def LatestModel(path):
-    if(not os.path.isdir(path)):
-        path = os.path.join("." , "data", os.path.basename(path).split("_")[0])    
-    latestModel = max(Paths.GetFiles(path, findExtesions=".h5"), key=os.path.getctime)
+    if(Const.ParseModelUID(path) is None):
+        folders = [os.path.join("." , "data",folder) for folder in os.listdir(os.path.join("." , "data")) 
+                                                        if os.path.isdir(os.path.join("." , "data",folder)) 
+                                                        and path == Const.RemoveUID(Const.ParseModelName(folder))
+                                                        and len(Paths.GetFiles(os.path.join("." , "data",folder), findExtesions=".h5")) > 0]
+        path = max(folders, key=os.path.getctime)
+    else:
+        path = os.path.join("." , "data", Const.ParseModelName(path))    
+
+    try:
+        latestModel = max(Paths.GetFiles(path, findExtesions=".h5"), key=os.path.getctime)
+    except:
+        print(f"No model found in: {path}")
+        latestModel = None
+
     return latestModel
 
 import re
@@ -449,31 +522,14 @@ def LoadModel(modelPath, consts):
     # model.summary()
     return model, modified
 
-def ParseModelConfig(file):
-    config = Paths.FileName(file).split("_")[0].replace("("," ").replace(")","").replace("vox ","").split(" ")
-
-    consts = None
-    if(config[0] == NPM3D.name):
-        consts = NPM3D()            
-    if(config[0] == Semantic3D.name):
-        consts = Semantic3D()
-    
-    for conf in config[1:]:
-        if(conf == "NOCOL"):
-            consts.nocolor = True
-        elif(conf == "fusion"):
-            consts.fusion = True
-
-    return consts
-
 def ReadModelConfig(path):
     Model = ReadModel(path)
-    modelConfig = ParseModelConfig(path)
+    modelConfig = Const.ParseModelConfig(path)
     return Model, modelConfig
 
 def CreateModelCopy(Model, modelConfig, in_pts, in_RGB):
-    inputFeatures = 1 if modelConfig.nocolor else modelConfig.featureComponents
-    newModel = CreateModel(modelConfig.classCount, inputFeatures, in_RGB, in_pts, noColor=modelConfig.nocolor, returnFeatures=True, applySoftmax=False)
+    inputFeatures = 1 if modelConfig.noFeature else modelConfig.featureComponents
+    newModel = CreateModel(modelConfig.classCount, inputFeatures, in_RGB, in_pts, noColor=modelConfig.noFeature, returnFeatures=True, applySoftmax=False)
     for new_layer, layer in zip(newModel.layers, Model.layers):
         new_layer.set_weights(layer.get_weights())
     return newModel
@@ -481,14 +537,15 @@ def CreateModelCopy(Model, modelConfig, in_pts, in_RGB):
 def FuseModels(modelPaths, consts):
     fusionModel = None
 
-    assert(len(modelPaths) == 2)
+    assert(len(modelPaths) == 2 or modelPaths is None)
     print("Model fusion")
     
-    ModelA, modelAConfig = ReadModelConfig(modelPaths[0])
-    ModelB, modelBConfig = ReadModelConfig(modelPaths[1])
+    if(not modelPaths is None):
+        ModelA, modelAConfig = ReadModelConfig(modelPaths[0])
+        ModelB, modelBConfig = ReadModelConfig(modelPaths[1])
 
     in_RGB = None
-    if(not modelAConfig.nocolor or not modelBConfig.nocolor):
+    if(not modelAConfig.noFeature or not modelBConfig.noFeature):
         in_RGB = Input(shape=(Const.npoints, consts.featureComponents), dtype=tf.float32, name = "In_RGB") #features
     in_pts = Input(shape=(Const.npoints, Const.pointComponents), dtype=tf.float32, name = "In_pts") #points
 
@@ -587,6 +644,8 @@ class IOUPerClass(tf.keras.callbacks.Callback):
         self.classNames = classNames
         self.path = plot_path
 
+        print(f"IOU logs path: {self.path}")
+
         self.writers = []
         self.val_writers = []
         ioupath = os.path.join(plot_path, "iou")
@@ -645,6 +704,11 @@ class IOUPerClass(tf.keras.callbacks.Callback):
         self.WriteLog(self.val_miou_writer, "val_"+self.metric, logs, self.epoch)
         self.epoch += 1
 
+def WriteToLog(saveDir, msg):
+    logFile = open(saveDir+f"/training.log", "a")
+    logFile.write(msg+"\n")
+    logFile.close()
+
 class ModelSaveCallback(tf.keras.callbacks.Callback):
     def __init__(self, saveDir, trainingSteps, metric = "accuracy", modelNamePrefix = "", sendNotifications = False):
         super().__init__()
@@ -654,12 +718,13 @@ class ModelSaveCallback(tf.keras.callbacks.Callback):
 
         self.epoch = 0
         self.trainingSteps = trainingSteps
-
+        
         self.sendNotifications = sendNotifications
         if(self.sendNotifications):
             self.notifyDevice = Notify()
         
         os.makedirs(self.saveDir, exist_ok=True)
+        WriteToLog(self.saveDir, f"Training: {modelNamePrefix}")
 
     def on_epoch_end(self, epoch, logs=None):
         self.epoch = epoch
@@ -669,10 +734,16 @@ class ModelSaveCallback(tf.keras.callbacks.Callback):
             val_miou = logs.get(val_metric)[0][0]*100
             SaveModel(self.saveDir, epoch, self.model, miou, val_miou, self.modelNamePrefix)
 
+            message = "Ep: {0}. {1}: {2:.3}%. {3}: {4:.3}%".format(self.epoch, self.metric, miou, val_metric, val_miou)
+            WriteToLog(self.saveDir, message)
+
+            f = open("demofile3.txt", "w")
+            f.write("Woops! I have deleted the content!")
+            f.close()
+
             if(self.sendNotifications):
-                try:
-                    message = "{0} Ep: {1}. {2}: {3:.3}%. {4}: {5:.3}%".format(self.modelNamePrefix, self.epoch, self.metric, miou, val_metric, val_miou)
-                    self.notifyDevice.send(message)
+                try:                    
+                    self.notifyDevice.send(self.modelNamePrefix + " " + message)
                 except:
                     print("notifyDevice error")
     
@@ -687,19 +758,19 @@ class ModelSaveCallback(tf.keras.callbacks.Callback):
 
 def ParseEpoch(modelPath):
     filename = os.path.basename(modelPath)
-    return int(filename.split("_")[1])
+    return int(filename.split("_")[2])
 
 def GetValidationData(testFiles, consts, batchesCount = 100):
     print("Gathering validation data...")
 
-    seq = TrainSequence(testFiles, batchesCount, consts, dataAugmentation = False)
-    if not consts.nocolor:
+    seq = TrainSequence(testFiles, batchesCount, consts, dataAugmentation = False)    
+    if not consts.noFeature:
         ftsList = np.zeros((0, consts.npoints, consts.featureComponents), np.float32)
     ptsList = np.zeros((0, consts.npoints, 3), np.float32)
     lbsList = np.zeros((0, consts.npoints, consts.classCount), np.uint8)
 
     for i in range(batchesCount):
-        if consts.nocolor:
+        if consts.noFeature:
             pts, lbl = seq.__getitem__(i)
             ptsList = np.concatenate((ptsList, pts[0]), 0)
             lbsList = np.concatenate((lbsList, lbl), 0)
@@ -711,17 +782,20 @@ def GetValidationData(testFiles, consts, batchesCount = 100):
     
     print(f"Generated {len(lbsList)} validation samples.")
 
-    if consts.nocolor:
+    if consts.noFeature:
         return (ptsList, lbsList)
     else:
         return ([ftsList, ptsList], lbsList)
         
-def TrainModel(trainFiles, testFiles, consts, modelPath = None, saveDir = None, classes = None, modelNamePrefix = "", first_epoch = 0, epochs = None, sendNotifications = False):
-    print("Train {} on {} files. Test on {} files".format(consts.Name(), len(trainFiles), len(testFiles)))
-    print("Validate on :", testFiles)
-    model = None    
-        
+def TrainModel(trainFiles, testFiles, consts : Const, modelPath = None, saveDir = Paths.dataPath, classes = None, first_epoch = 0, epochs = None, sendNotifications = False):    
+    model = None
+    modelName = None
     if(modelPath != None):
+        if(not isinstance(modelPath, list)):
+            modelName = Const.ParseModelName(modelPath)
+            if(consts.Name() != Const.RemoveUID(modelName)):
+                modelName = consts.Name(consts.UID())
+
         if(isinstance(modelPath, list)):
             model = FuseModels(modelPath, consts)
         else:
@@ -729,26 +803,37 @@ def TrainModel(trainFiles, testFiles, consts, modelPath = None, saveDir = None, 
             if(not modified):
                 first_epoch = ParseEpoch(modelPath) +1
     else:
-        model = CreateModel(consts.classCount, 1 if consts.nocolor else consts.featureComponents, noColor=consts.nocolor)    
+        if(consts.Fusion):
+            model = FuseModels(None, consts)
+        else:
+            model = CreateModel(consts.classCount, 1 if consts.noFeature else consts.featureComponents, noColor=consts.noFeature)
+    
+    if(modelName is None):
+        modelName = consts.Name(consts.UID())
+
+    print("Train {} on {} files. Test on {} files".format(modelName, len(trainFiles), len(testFiles)))
+    print("Validate on :", testFiles)
 
     trainingSteps = int((1000*16)/consts.batchSize) if not Const.IsWindowsMachine() else int(10)
     print("Batch size: {}, trainingSteps: {}".format(consts.batchSize, trainingSteps))
 
-    logsPath = os.path.join(consts.logsPath, consts.Name())
+    logsPath = os.path.join(consts.logsPath, Const.RemoveUID(modelName))
     os.makedirs(logsPath, exist_ok=True)
     callbacks_list = []
     if(saveDir != None):
-        if(modelNamePrefix != ""):
-            saveDir += f"/{modelNamePrefix}/"
-        callbacks_list.append(ModelSaveCallback(saveDir, trainingSteps, "miou", modelNamePrefix = modelNamePrefix, sendNotifications=sendNotifications))
+        if(modelName != ""):
+            saveDir += f"/{modelName}/"
+        callbacks_list.append(ModelSaveCallback(saveDir, trainingSteps, "miou", modelNamePrefix = modelName, sendNotifications=sendNotifications))        
+        if(not modelPath is None):
+            WriteToLog(saveDir, "Models loaded: "+str(modelPath))
     callbacks_list.append(IOUPerClass(logsPath, consts.classNames[1:], first_epoch+1))
     callbacks_list.append(tf.keras.callbacks.TensorBoard(log_dir=logsPath, update_freq="batch", histogram_freq=0, profile_batch = 0)) # tensorboard 2.0.2
-    
+
     seq = TrainSequence(trainFiles, trainingSteps, consts)
     validationData = None if len(testFiles) == 0 else GetValidationData(testFiles, consts, 150 if not Const.IsWindowsMachine() else 10)
 
     if(epochs is None):
-        epochs = 20 if consts.fusion else 100
+        epochs = 20 if consts.Fusion else 100
 
     model.fit(seq, validation_data = validationData, epochs = epochs, workers = consts.batchSize, max_queue_size = 300, callbacks=callbacks_list, initial_epoch = first_epoch)
 
@@ -787,7 +872,7 @@ def RotatePointCloud(batch_data):
                                 [0, 0, 1],])
     return np.dot(batch_data, rotation_matrix)
 
-def JitterRGB(features, fullAugmentation = False):
+def JitterRGB(features):
     features = features.astype(np.uint8)
     assert(np.max(features) > 1)
 
@@ -800,12 +885,11 @@ def JitterRGB(features, fullAugmentation = False):
     img = ImageEnhance.Color(img).enhance(np.random.uniform(low, high))
     img = ImageEnhance.Contrast(img).enhance(np.random.uniform(low, high))
 
-    if(fullAugmentation):
-        img = ImageEnhance.Sharpness(img).enhance(np.random.uniform(low, high))
-        if(np.random.uniform(low, high) > 1):
-            img = ImageOps.equalize(img)        
-        if(np.random.uniform(low, high) > 1):
-            img = ImageOps.autocontrast(img)
+    img = ImageEnhance.Sharpness(img).enhance(np.random.uniform(low, high))
+    if(np.random.uniform(low, high) > 1):
+        img = ImageOps.equalize(img)        
+    if(np.random.uniform(low, high) > 1):
+        img = ImageOps.autocontrast(img)
 
     new_features = np.array(img).reshape((-1, 3))
     return new_features
@@ -830,6 +914,34 @@ def JitterPoints(points, sigma=0.01):
     randJitters = np.random.uniform(-sigma, sigma, size = points.shape)
     return points + randJitters
 
+def Mirror(points, axis, min = True):
+    if(min):
+        axisValue = np.amin(points[:,axis])
+    else:
+        axisValue = np.amax(points[:,axis])
+
+    distances = np.abs(points[:, axis] - axisValue)
+    newpoints = np.array(points, copy=True)
+
+    newpoints[:,axis] = newpoints[:,axis] + distances*(-2 if min else 2)
+    return newpoints
+
+def MirrorPoints(points):  
+    assert(len(points.shape) == 2 and points.shape[1] == 3)
+
+    mirrorDirection = random.choice(["xMin", "xMax", "yMin", "yMax", ""])
+
+    if(mirrorDirection == "xMin"):
+        points = Mirror(points, 0, min = True)
+    elif(mirrorDirection == "xMax"):
+        points = Mirror(points, 0, min = False)
+    elif(mirrorDirection == "yMin"):
+        points = Mirror(points, 1, min = True)
+    elif(mirrorDirection == "yMax"):
+        points = Mirror(points, 1, min = False)
+        
+    return points
+
 def ScalePoints(points, sigma = 0.02):
     """ Scale up or down random by small percentage
         Input:
@@ -848,21 +960,11 @@ def ScalePoints(points, sigma = 0.02):
     return scaled
 
 class TrainSequence(Sequence):
-    def __init__(self, filelist, iteration_number, consts, dataAugmentation = True):
+    def __init__(self, filelist, iteration_number, consts : Const, dataAugmentation = True):
         self.filelist = filelist
-        self.batchSize = consts.batchSize
-        self.npoints = consts.npoints
-        self.bs = consts.blocksize
-        self.dataAugmentation = dataAugmentation and not consts.noAugmentation
-        self.nocolor = consts.nocolor
+        self.cts = consts
+        self.dataAugmentation = dataAugmentation
         self.iterations = iteration_number
-        self.features_count = consts.featureComponents
-        self.class_count = consts.classCount
-        self.NormalizeClassesPoints = consts.normalizeClasses
-        self.fusion = consts.fusion
-        self.fullAugmentation = consts.fullAugmentation
-        self.augmentOnlyRgb = consts.augmentOnlyRgb
-        self.noScale = consts.noScale
 
     def __len__(self):
         return int(self.iterations)
@@ -871,7 +973,7 @@ class TrainSequence(Sequence):
         lblIdx = []
 
         while True:
-            randClass = random.randint(0, self.class_count-1)
+            randClass = random.randint(0, self.cts.classCount-1)
             lblIdx = np.where(lbl == randClass)[0]
 
             if(len(lblIdx) >= 2):
@@ -880,30 +982,29 @@ class TrainSequence(Sequence):
         return lblIdx[random.randint(0, len(lblIdx)-1)]        
 
     def __getitem__(self, _):
-        if not self.nocolor:
-            ftsList = np.zeros((self.batchSize, self.npoints, self.features_count), np.float32)            
-        ptsList = np.zeros((self.batchSize, self.npoints, 3), np.float32)
-        lbsList = np.zeros((self.batchSize, self.npoints, self.class_count), np.uint8)
+        if not self.cts.noFeature:
+            ftsList = np.zeros((self.cts.batchSize, self.cts.npoints, self.cts.featureComponents), np.float32)            
+        ptsList = np.zeros((self.cts.batchSize, self.cts.npoints, 3), np.float32)
+        lbsList = np.zeros((self.cts.batchSize, self.cts.npoints, self.cts.classCount), np.uint8)
         
-        for i in range(self.batchSize):
+        for i in range(self.cts.batchSize):
             # load the data
             index = random.randint(0, len(self.filelist)-1)
             pts = np.load(self.filelist[index])
             
-            if(self.features_count == 1):
+            if(self.cts.featureComponents == 1):
                 keepPts = (pts[:, 4] != 0)
-            else: #(self.features_count == 3):
+            else:
                 keepPts = (pts[:, 6] != 0)
             pts = pts[keepPts]
 
             # get the features
-            if(self.features_count == 1):
-                if not self.nocolor:         
+            if(self.cts.featureComponents == 1):
+                if not self.cts.noFeature:         
                     fts = np.expand_dims(pts[:,3], 1).astype(np.float32)
                 lbs = pts[:,4].astype(int)
-            else: #(self.features_count == 3):
-                if not self.nocolor:
-                    # fts = np.expand_dims(pts[:,3:6], 1).astype(np.float32)
+            else:
+                if not self.cts.noFeature:
                     fts = pts[:,3:6].astype(np.float32)
                 lbs = pts[:,6].astype(int)
 
@@ -913,67 +1014,66 @@ class TrainSequence(Sequence):
             pts = pts[:, :3]
 
             # pick a random point
-            if self.NormalizeClassesPoints:
-                pt_id = self.PickRandomPoint(lbs)
-            else:
-                pt_id = random.randint(0, pts.shape[0]-1)
+            pt_id = random.randint(0, pts.shape[0]-1)
 
             pt = pts[pt_id]
 
             # create the mask
-            mask_x = np.logical_and(pts[:,0]<pt[0]+self.bs/2, pts[:,0]>pt[0]-self.bs/2)
-            mask_y = np.logical_and(pts[:,1]<pt[1]+self.bs/2, pts[:,1]>pt[1]-self.bs/2)
+            mask_x = np.logical_and(pts[:,0]<pt[0]+self.cts.blocksize/2, pts[:,0]>pt[0]-self.cts.blocksize/2)
+            mask_y = np.logical_and(pts[:,1]<pt[1]+self.cts.blocksize/2, pts[:,1]>pt[1]-self.cts.blocksize/2)
             mask = np.logical_and(mask_x, mask_y)
             temppts = pts[mask]
             templbs = lbs[mask]
-            if not self.nocolor:
+            if not self.cts.noFeature:
                 tempfts = fts[mask]
             
             # random selection
-            choice = np.random.choice(temppts.shape[0], self.npoints, replace=True)
+            choice = np.random.choice(temppts.shape[0], self.cts.npoints, replace=True)
             temppts = temppts[choice]    
-            if not self.nocolor:        
+            if not self.cts.noFeature:        
                 tempfts = tempfts[choice]
 
             templbs = templbs[choice]
-            encodedLbs = np.zeros((len(templbs), self.class_count))
+            encodedLbs = np.zeros((len(templbs), self.cts.classCount))
             encodedLbs[np.arange(len(templbs)),templbs] = 1
             templbs = encodedLbs
 
-            # if self.training:
+            # if self.dataAugmentation:
             #     dt = DataTool()
             #     dt.VisualizePointCloudAsync([temppts], [tempfts/255])
 
             # data augmentation
             if self.dataAugmentation:
-                if(not self.augmentOnlyRgb):
+                if(self.cts.Mirror):
+                    temppts = MirrorPoints(temppts)
+                if(self.cts.Rotate):
                     temppts = RotatePointCloud(temppts)
-                    if(self.fullAugmentation):
-                        if(not self.noScale):
-                            temppts = ScalePoints(temppts)
-                        temppts = JitterPoints(temppts, sigma = 0.001 if self.noScale else 0.01)
+                if(self.cts.Scale):
+                    temppts = ScalePoints(temppts, sigma = 0.02)
+                if(self.cts.Jitter):
+                    temppts = JitterPoints(temppts, sigma = 0.01)
 
-                if(not self.nocolor):
-                    if(self.features_count == 3):
-                        tempfts = JitterRGB(tempfts, self.fullAugmentation or self.augmentOnlyRgb)
-                    elif(self.features_count == 1):
+                if(not self.cts.noFeature and self.cts.FtrAugment):
+                    if(self.cts.featureComponents == 3):
+                        tempfts = JitterRGB(tempfts)
+                    elif(self.cts.featureComponents == 1):
                         tempfts = JitterReflectance(tempfts)
                                 
-            if(not self.nocolor):
+            if(not self.cts.noFeature):
                 tempfts = tempfts.astype(np.float32)
                 tempfts = tempfts/255 # - 0.5
             
-            # if self.training:
+            # if self.dataAugmentation:
             #     # visualize data
             #     dt = DataTool()
             #     dt.VisualizePointCloud([temppts], [tempfts], windowName = "Augmented")
 
-            if not self.nocolor:
+            if not self.cts.noFeature:
                 ftsList[i] = np.expand_dims(tempfts, 0)
             ptsList[i] = np.expand_dims(temppts, 0)
             lbsList[i] = np.expand_dims(templbs, 0)
         
-        if self.nocolor:
+        if self.cts.noFeature:
             return [ptsList], lbsList
         else: # works for RGB and fusion models
             return [ftsList, ptsList], lbsList
@@ -983,10 +1083,10 @@ class TestSequence(Sequence):
         self.filename = filename
         self.batchSize = consts.batchSize
         self.npoints = consts.npoints
-        self.nocolor = consts.nocolor
+        self.nocolor = consts.noFeature
         self.bs = consts.blocksize
         self.featureComponents = consts.featureComponents
-        self.fusion = consts.fusion
+        self.fusion = consts.Fusion
 
         if(self.filename.endswith(".ply")):
             from plyfile import PlyData
@@ -1267,11 +1367,17 @@ def UpscaleFilesAsync(modelPath, voxelFolder, orgFolder, savePath):
     while True:
         found = False
 
-        if(len(Paths.GetFiles(savePath, onlyNames=True, withoutExtension=True, findExtesions=('.labels'))) == 15):
+        fileNames = Semantic3D.fileNames
+        for file in Paths.GetFiles(savePath, onlyNames=True, withoutExtension=True, findExtesions=('.labels')):
+            if(file in fileNames or fileNames.values()):
+                fileNames = {key:val for key, val in fileNames.items() if val != file and key != file}
+                    
+        if(len(fileNames) == 0):        
+            print("Done upscaling files")
             notifyDevice.send("Done upscaling files")
+            return
 
-        for file in Paths.GetFiles(savePath+"/vox_lbl/", onlyNames=True, withoutExtension=True, findExtesions=('.npy')):
-                
+        for file in Paths.GetFiles(savePath+"/vox_lbl/", onlyNames=True, withoutExtension=True, findExtesions=('.npy')):                
             ptslbs = os.path.join(savePath+"/vox_lbl/", file+".npy")
             # originalFile = os.path.join(orgFolder, file+".npy")
             originalFile = os.path.join(orgFolder, file+".hdf5")
@@ -1332,7 +1438,7 @@ def TestTestSequence(path, consts):
     dt = DataTool()
     dt.VisualizePointCloud([a, b], [[1,0,0], None])
 
-if(os.path.exists("C:/Users/Jonas")):
+if(os.path.exists("C:/Program Files")):
     import open3d as o3d
     import time
     from dataTool import LoadRenderOptions, SaveRenderOptions, GetPointsIndexInBoundingBox, GetPointsInBoundingBox
@@ -1541,42 +1647,68 @@ def RunExperiments():
     avg_acc, avg_class = stats_accuracy_per_class(cm)
     avg_iou, avg_iou_class = stats_iou_per_class(cm)
 
+def RenameSemantic3DFiles(folder):
+    if(len(Paths.GetFiles(folder, findExtesions = ".labels")) == 0):
+        print("No files found.")
+        return
+
+    for file in Paths.GetFiles(folder, findExtesions = ".labels"):
+        if(Paths.FileName(file).endswith("(1)")):
+            os.remove(file)
+        else:
+            name = Paths.FileName(file)
+            newFileName = file.replace(name, Semantic3D.fileNames[name])
+            os.rename(file, newFileName)
+
+            if(os.path.getsize(newFileName) == 0):
+                print(f"{newFileName} if 0 bytes size")
+    
+    if(len(Paths.GetFiles(folder, findExtesions = ".labels")) != 15):
+        print("Wrong number of files.")
+    else:
+        print("Done renaming: ", folder)
+
 if __name__ == "__main__":
     from NearestNeighbors import NearestNeighborsLayer, SampleNearestNeighborsLayer
     from KDTree import KDTreeLayer, KDTreeSampleLayer
 
-    consts = NPM3D()
-    # consts = Semantic3D()
-    # consts.nocolor = True
-    consts.fusion = True
-    # consts.normalizeClasses = True
-    consts.fullAugmentation = True
-    # consts.noAugmentation = True
-    # consts.augmentOnlyRgb = True
-    consts.noScale = False
+    # consts = NPM3D()
+    consts = Semantic3D()
+
+    # consts.noFeature = True
+    # consts.Fusion = True
+    consts.Scale = True
+    consts.Rotate = True
+    consts.Mirror = True
+    # consts.Jitter = True
+    consts.FtrAugment = True
+
     testFiles = consts.TestFiles()
     trainFiles = consts.TrainFiles()
 
-    # modelPath = "NPM3D(80&5)(RGB)(FullAugment)_19_train(85.9)_val(72.8).h5"
+    # modelPath = "Sem3D(14&1)(Rotate)(Mirror)(Jitter)(FtrAugment)_251595a66b8d48dcb6d8f46ccd7d8afe_60_train(85.4)_val(79.6).h5"
+    # modelPath = ["Sem3D(vox)(RGB)(FullAugment)_55_train(85.7)_val(79.9)", "Sem3D(NOCOL)_50_train(87.4)_val(69.1)"]
     # modelPath = ["NPM3D(80&5)(RGB)(NoScale)_28_train(88.3)_val(73.2).h5", "NPM3D(80&5)(NOCOL)(FullAugment)_28_train(87.3)_val(71.5).h5"]
-    modelPath = LatestModel("NPM3D(80&5)(fusion)(FullAugment)")
+    # modelPath = LatestModel("Sem3D(14&1)(noFeature)(Scale)(Rotate)(Mirror)(Jitter)")
+    # modelPath = LatestModel(consts.Name())
     
     if(isinstance(modelPath,list)):
-        consts.fusion = True
+        consts.Fusion = True
 
-    if(not consts.fusion and not Const.IsWindowsMachine()):
+    if(not consts.Fusion and not Const.IsWindowsMachine()):
         tf.config.optimizer.set_jit(True) #Gives more than 10% boost!!!
         print("XLA enabled.")
 
-    TrainModel(trainFiles, testFiles, consts, saveDir=Paths.dataPath, modelPath = modelPath, modelNamePrefix=consts.Name(), epochs = 8) #continue train
-    # TrainModel(trainFiles, testFiles, consts, saveDir=Paths.dataPath, modelNamePrefix=consts.Name()) #new model
+    # TrainModel(trainFiles, testFiles, consts, modelPath = modelPath)# , epochs = 8) #continue train
+    TrainModel(trainFiles, testFiles, consts) #new model
 
-    modelPath = HighestValMIOUModel("NPM3D(80&5)(fusion)(FullAugment)")
+    # modelPath = HighestValMIOUModel("NPM3D(80&5)(fusion)(FullAugment)")
 
     #NPM3D
-    GenerateData(modelPath, Paths.GetFiles(consts.Paths.rawTest), consts, consts.Paths.generatedTest)
+    # GenerateData(modelPath, Paths.GetFiles(consts.Paths.rawTest), consts, consts.Paths.generatedTest)
     
     #Semantic3D
     # GenerateLargeData(modelPath, [Paths.Semantic3D.processedTest+"sg28_station2_intensity_rgb_voxels.npy"], Paths.Semantic3D.rawTest, consts, consts.Paths.generatedTest, Upscale=False)
     # GenerateLargeData(modelPath, Paths.Semantic3D.processedTest, Paths.Semantic3D.rawTest, consts, consts.Paths.generatedTest, Upscale=False)
     # UpscaleFilesAsync(modelPath, Paths.Semantic3D.processedTest, Paths.Semantic3D.rawTest, Paths.Semantic3D.generatedTest)
+    # RenameSemantic3DFiles(Paths.Semantic3D.generatedTest + Paths.FileName(modelPath))

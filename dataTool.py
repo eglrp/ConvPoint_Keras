@@ -1969,11 +1969,41 @@ def VisualizeError():
 if __name__ == "__main__":
     print()
 
+    mainPC = ReadRGB(r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_0.npy")
+
+    mainPC = ReadXYZ(r"G:\PointCloud DataSets\NPM3D\training_10_classes\Lille2.ply")
+    train = [r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_0.npy",
+            r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_1.npy",
+            r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_2.npy",            
+            r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_8.npy",
+            r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_9.npy"]
+    test = r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_10.npy"
+    nextTrain = r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_3.npy"
+
+    goodPoints = []
+    colors = []
+    for file in train:
+        goodPoints.append(ReadXYZ(file))
+        colors.append(np.array([0.0, 1.0, 0.0]))
+
+    goodPoints.append(ReadXYZ(test))
+    colors.append(np.array([1.0, 0.0, 0.0]))
+
+    goodPoints.append(ReadXYZ(nextTrain))
+    colors.append(np.array([0.0, 0.0, 1.0]))
+
+    goodPoints.append(mainPC)
+    colors.append(None)
+    
+
+    DataTool().VisualizePointCloud(goodPoints, colors, downSample=True)
+
+
     # file = r"G:\PointCloud DataSets\semantic3d\processedTrain\domfountain_station3_xyz_intensity_rgb_voxels.npy"
-    file = r"G:\PointCloud DataSets\VGTU\VGTU_Clean_voxels.npy"
-    lbl = None
-    # lbl = r"G:\PointCloud DataSets\VGTU\VGTU_Clean_Sem3D(fusion)_1_train(88.9)_val(79.7).labels"
-    LiveSegmentationAnimation(file, lbl)
+    # file = r"G:\PointCloud DataSets\VGTU\VGTU_Clean_voxels.npy"
+    # lbl = None
+    # # lbl = r"G:\PointCloud DataSets\VGTU\VGTU_Clean_Sem3D(fusion)_1_train(88.9)_val(79.7).labels"
+    # LiveSegmentationAnimation(file, lbl)
 
     # DownSampleVGTUData()
     # ConvertData()
@@ -1982,7 +2012,12 @@ if __name__ == "__main__":
     # VisualizePointCloudClasses(r"G:\PointCloud DataSets\VGTU\VGTU_Clean.npy", r"G:\PointCloud DataSets\VGTU\VGTU_Clean.labels", downSample=True)
     # VisualizePointCloudClasses(r"C:\Users\Jonas\Downloads\bildstein_station1_xyz_intensity_rgb_voxels.npy", noLbl = True, downSample=False)
     
-    # VisualizePointCloudClassesAsync("G:/PointCloud DataSets/NPM3D/test_10_classes/ajaccio_2.ply", "G:/PointCloud DataSets/NPM3D/results/ajaccio_2.txt", downSample=False, windowName="last")
+    # VisualizePointCloudClassesAsync("G:/PointCloud DataSets/NPM3D/test_10_classes/ajaccio_57.ply", 
+    #                                 "G:/PointCloud DataSets/NPM3D/generatedTest/NPM3D(NOCOL)(FullAugment)_49_train(89.6)_val(89.2)/ajaccio_57.txt", downSample=False, windowName="NPM3D(NOCOL)(FullAugment)_49")
+
+    # VisualizePointCloudClassesAsync("G:/PointCloud DataSets/NPM3D/test_10_classes/ajaccio_57.ply", 
+    #                                 "G:/PointCloud DataSets/NPM3D/generatedTest/generated_NPM3D(NOCOL)_39_train(91.4)_val(87.8)/ajaccio_57.txt", downSample=False, windowName="NPM3D(NOCOL)_39")
+
     # VisualizePointCloudClassesAsync("G:/PointCloud DataSets/NPM3D/test_10_classes/ajaccio_57.ply", "G:/PointCloud DataSets/NPM3D/processedTest/ajaccio_57.txt", downSample=False, windowName="keras")
     # VisualizePointCloudClassesAsync("G:/PointCloud DataSets/NPM3D/test_10_classes/ajaccio_57.ply", "G:/PointCloud DataSets/NPM3D/torch_generated_data/results88.2%/ajaccio_57.txt", downSample=False , windowName="torch")
     # VisualizePointCloudClassesAsync("G:/PointCloud DataSets/NPM3D/test_10_classes/ajaccio_57.ply", "G:/PointCloud DataSets/NPM3D/processedTest/ajaccio_57.txt", downSample=False)
@@ -2027,7 +2062,7 @@ if __name__ == "__main__":
     # PreprocessDatasetToVoxels(Paths.Semantic3D.rawTestSmall, Paths.Semantic3D.generatedTestSmall, override=False)
     # PreprocessDatasetToVoxels(Paths.Semantic3D.rawTrain, r"G:\PointCloud DataSets\semantic3d\processedTrain(0.15m)", override=False, extension=".hdf5", voxelSize=0.15)
     # PreprocessDatasetToVoxels(Paths.Semantic3D.rawTest, Paths.Semantic3D.processedTest, override=False, extension=".hdf5")
-    # PreprocessDatasetToVoxels(Paths.NPM3D.processedTrain, Paths.NPM3D.processedTrainVoxels, override=False, extension=".npy")
+    # PreprocessDatasetToVoxels(r"G:\PointCloud DataSets\NPM3D\\training_10_classes", Paths.NPM3D.processedTrain,  override=False, extension=".ply")
     # PreprocessDatasetToVoxels(Paths.rawTrain, "G:/PointCloud DataSets/semenatic3d/processedTrain(0.02_voxels)", override=False, voxelSize=0.02)
 
     # dataTool = DataTool()
@@ -2042,3 +2077,5 @@ if __name__ == "__main__":
     # WriteLabelsToLas("G:/PointCloud DataSets/monorail_bridge.las", "G:/PointCloud DataSets/semenatic3d/generatedTest/monorail_bridge.labels")
     # SaveSeparateClassLasFiles("G:/PointCloud DataSets/monorail_bridge.las")
     # SaveSeparateClassLasFiles("G:/PointCloud DataSets/semenatic3d/rawTrain/bildstein_station3_xyz_intensity_rgb.hdf5")
+
+    input()
