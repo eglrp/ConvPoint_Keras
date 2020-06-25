@@ -156,7 +156,7 @@ class Semantic3D(Const):
 
     testFiles = [
                 "untermaederbrunnen_station3_xyz_intensity_rgb_voxels.npy",
-                # "domfountain_station1_xyz_intensity_rgb_voxels.npy",
+                "domfountain_station1_xyz_intensity_rgb_voxels.npy",
                 ]
 
     excludeFiles = []
@@ -476,7 +476,8 @@ def ReadModel(modelPath):
                         'KDTreeSampleLayer':KDTreeSampleLayer,
                         'KDTreeLayer':KDTreeLayer,
                         })
-    print("{} model loaded".format(modelPath))
+
+    PrintToLog("{} model loaded".format(modelPath))
     return model
 
 def LatestModel(path):
@@ -530,8 +531,11 @@ def ReadModelConfig(path):
 def CreateModelCopy(Model, modelConfig, in_pts, in_RGB):
     inputFeatures = 1 if modelConfig.noFeature else modelConfig.featureComponents
     newModel = CreateModel(modelConfig.classCount, inputFeatures, in_RGB, in_pts, noColor=modelConfig.noFeature, returnFeatures=True, applySoftmax=False)
-    for new_layer, layer in zip(newModel.layers, Model.layers):
-        new_layer.set_weights(layer.get_weights())
+
+    if(Model != None):
+        for new_layer, layer in zip(newModel.layers, Model.layers):
+            new_layer.set_weights(layer.get_weights())
+
     return newModel
 
 def FuseModels(modelPaths, consts):
@@ -543,6 +547,11 @@ def FuseModels(modelPaths, consts):
     if(not modelPaths is None):
         ModelA, modelAConfig = ReadModelConfig(modelPaths[0])
         ModelB, modelBConfig = ReadModelConfig(modelPaths[1])
+    else:
+        consts.noFeature = False
+        modelAConfig = consts
+        consts.noFeature = True
+        modelBConfig = consts
 
     in_RGB = None
     if(not modelAConfig.noFeature or not modelBConfig.noFeature):
@@ -575,7 +584,7 @@ def FuseModels(modelPaths, consts):
             layer.trainable = False
             count += 1
 
-    print(f"{len(fusionModel.layers)-count}/{len(fusionModel.layers)} layers are trainable.")
+    PrintToLog(f"{len(fusionModel.layers)-count}/{len(fusionModel.layers)} layers are trainable.")
 
     fusionModel = CompileModel(fusionModel, consts.classCount)
     # fusionModel.summary()
@@ -704,10 +713,16 @@ class IOUPerClass(tf.keras.callbacks.Callback):
         self.WriteLog(self.val_miou_writer, "val_"+self.metric, logs, self.epoch)
         self.epoch += 1
 
-def WriteToLog(saveDir, msg):
-    logFile = open(saveDir+f"/training.log", "a")
-    logFile.write(msg+"\n")
-    logFile.close()
+logSaveDir = ""
+def WriteToLog(msg):
+    if(os.path.isdir(logSaveDir)):
+        logFile = open(logSaveDir+f"/training.log", "a")
+        logFile.write(msg+"\n")
+        logFile.close()
+
+def PrintToLog(msg):
+    print(msg)
+    WriteToLog(msg)
 
 class ModelSaveCallback(tf.keras.callbacks.Callback):
     def __init__(self, saveDir, trainingSteps, metric = "accuracy", modelNamePrefix = "", sendNotifications = False):
@@ -724,7 +739,7 @@ class ModelSaveCallback(tf.keras.callbacks.Callback):
             self.notifyDevice = Notify()
         
         os.makedirs(self.saveDir, exist_ok=True)
-        WriteToLog(self.saveDir, f"Training: {modelNamePrefix}")
+        WriteToLog(f"Training: {modelNamePrefix}")
 
     def on_epoch_end(self, epoch, logs=None):
         self.epoch = epoch
@@ -735,7 +750,7 @@ class ModelSaveCallback(tf.keras.callbacks.Callback):
             SaveModel(self.saveDir, epoch, self.model, miou, val_miou, self.modelNamePrefix)
 
             message = "Ep: {0}. {1}: {2:.3}%. {3}: {4:.3}%".format(self.epoch, self.metric, miou, val_metric, val_miou)
-            WriteToLog(self.saveDir, message)
+            WriteToLog(message)
 
             f = open("demofile3.txt", "w")
             f.write("Woops! I have deleted the content!")
@@ -760,27 +775,52 @@ def ParseEpoch(modelPath):
     filename = os.path.basename(modelPath)
     return int(filename.split("_")[2])
 
-def GetValidationData(testFiles, consts, batchesCount = 100):
+def GetValidationData(testFiles, consts, batchesCount = 100, newDataGeneration = False):
     print("Gathering validation data...")
 
-    seq = TrainSequence(testFiles, batchesCount, consts, dataAugmentation = False)    
+    if(newDataGeneration):
+        PrintToLog("Use TestSequence for validation.")
+
+        assert(len(testFiles) == 1)
+        seq = TestSequence(testFiles[0], consts, test = True)
+    else:
+        PrintToLog("Use TrainSequence for validation.")
+
+        seq = TrainSequence(testFiles, batchesCount, consts, dataAugmentation = False)    
+    
     if not consts.noFeature:
         ftsList = np.zeros((0, consts.npoints, consts.featureComponents), np.float32)
     ptsList = np.zeros((0, consts.npoints, 3), np.float32)
     lbsList = np.zeros((0, consts.npoints, consts.classCount), np.uint8)
 
-    for i in range(batchesCount):
+    if(newDataGeneration):
+        indexes = np.arange(min(batchesCount, len(seq)))
+        np.random.shuffle(indexes)
+    else:
+        indexes = range(batchesCount)
+
+    for i in indexes:
         if consts.noFeature:
-            pts, lbl = seq.__getitem__(i)
-            ptsList = np.concatenate((ptsList, pts[0]), 0)
-            lbsList = np.concatenate((lbsList, lbl), 0)
+            if(newDataGeneration):
+                ptslbl = seq.__getitem__(i)
+            else:
+                pts, lbl = seq.__getitem__(i)
+                ptslbl = [pts[0], lbl]
+            
+            ptsList = np.concatenate((ptsList, ptslbl[0]), 0)
+            lbsList = np.concatenate((lbsList, ptslbl[1]), 0)
         else:
-            ftspts, lbl = seq.__getitem__(i)
-            ftsList = np.concatenate((ftsList, ftspts[0]), 0)
-            ptsList = np.concatenate((ptsList, ftspts[1]), 0)
-            lbsList = np.concatenate((lbsList, lbl), 0)
+            if(newDataGeneration):
+                ftsptslbl = seq.__getitem__(i)
+            else:
+                ftspts, lbl = seq.__getitem__(i)
+                ftsptslbl = [ftspts[0], ftspts[1], lbl]
+            
+            ftsList = np.concatenate((ftsList, ftsptslbl[0]), 0)
+            ptsList = np.concatenate((ptsList, ftsptslbl[1]), 0)
+            lbsList = np.concatenate((lbsList, ftsptslbl[2]), 0)
     
-    print(f"Generated {len(lbsList)} validation samples.")
+    PrintToLog(f"Generated {len(lbsList)} validation samples.")
 
     if consts.noFeature:
         return (ptsList, lbsList)
@@ -794,7 +834,8 @@ def TrainModel(trainFiles, testFiles, consts : Const, modelPath = None, saveDir 
         if(not isinstance(modelPath, list)):
             modelName = Const.ParseModelName(modelPath)
             if(consts.Name() != Const.RemoveUID(modelName)):
-                modelName = consts.Name(consts.UID())
+                modelName = consts.Name(consts.UID())        
+        logSaveDir = saveDir + f"/{modelName}/"
 
         if(isinstance(modelPath, list)):
             model = FuseModels(modelPath, consts)
@@ -808,29 +849,25 @@ def TrainModel(trainFiles, testFiles, consts : Const, modelPath = None, saveDir 
         else:
             model = CreateModel(consts.classCount, 1 if consts.noFeature else consts.featureComponents, noColor=consts.noFeature)
     
-    if(modelName is None):
+    if(modelName is None or modelName == ""):
         modelName = consts.Name(consts.UID())
+        logSaveDir = saveDir + f"/{modelName}/"
 
-    print("Train {} on {} files. Test on {} files".format(modelName, len(trainFiles), len(testFiles)))
-    print("Validate on :", testFiles)
+    PrintToLog("Train {} on {} files. Test on {} files".format(modelName, len(trainFiles), len(testFiles)))
+    PrintToLog("Validate on :" + str(testFiles))
 
     trainingSteps = int((1000*16)/consts.batchSize) if not Const.IsWindowsMachine() else int(10)
-    print("Batch size: {}, trainingSteps: {}".format(consts.batchSize, trainingSteps))
+    PrintToLog("Batch size: {}, trainingSteps: {}".format(consts.batchSize, trainingSteps))
 
     logsPath = os.path.join(consts.logsPath, Const.RemoveUID(modelName))
     os.makedirs(logsPath, exist_ok=True)
-    callbacks_list = []
-    if(saveDir != None):
-        if(modelName != ""):
-            saveDir += f"/{modelName}/"
-        callbacks_list.append(ModelSaveCallback(saveDir, trainingSteps, "miou", modelNamePrefix = modelName, sendNotifications=sendNotifications))        
-        if(not modelPath is None):
-            WriteToLog(saveDir, "Models loaded: "+str(modelPath))
+    callbacks_list = []    
+    callbacks_list.append(ModelSaveCallback(logSaveDir, trainingSteps, "miou", modelNamePrefix = modelName, sendNotifications=sendNotifications))        
     callbacks_list.append(IOUPerClass(logsPath, consts.classNames[1:], first_epoch+1))
     callbacks_list.append(tf.keras.callbacks.TensorBoard(log_dir=logsPath, update_freq="batch", histogram_freq=0, profile_batch = 0)) # tensorboard 2.0.2
 
     seq = TrainSequence(trainFiles, trainingSteps, consts)
-    validationData = None if len(testFiles) == 0 else GetValidationData(testFiles, consts, 150 if not Const.IsWindowsMachine() else 10)
+    validationData = None if len(testFiles) == 0 else GetValidationData(testFiles, consts, 150 if not Const.IsWindowsMachine() else 10)    
 
     if(epochs is None):
         epochs = 20 if consts.Fusion else 100
@@ -839,7 +876,7 @@ def TrainModel(trainFiles, testFiles, consts : Const, modelPath = None, saveDir 
 
 def EvaluateModels(modelsList, testFiles, consts, x = None, y = None):
     if(x is None or y is None):
-        x, y = GetValidationData(testFiles, consts, 150 if not Const.IsWindowsMachine() else 10)
+        x, y = GetValidationData(testFiles, consts, 150 if not Const.IsWindowsMachine() else 10, newDataGeneration = False)
 
     for file in modelsList:
         model, _ = LoadModel(file, consts)
@@ -1079,7 +1116,7 @@ class TrainSequence(Sequence):
             return [ftsList, ptsList], lbsList
 
 class TestSequence(Sequence):
-    def __init__(self, filename, consts, splitDataSetToParts = -1, windowsMachineCap = True):
+    def __init__(self, filename, consts, splitDataSetToParts = -1, windowsMachineCap = True, test = False):
         self.filename = filename
         self.batchSize = consts.batchSize
         self.npoints = consts.npoints
@@ -1087,6 +1124,11 @@ class TestSequence(Sequence):
         self.bs = consts.blocksize
         self.featureComponents = consts.featureComponents
         self.fusion = consts.Fusion
+        self.test = test
+
+        if(self.test):
+            self.classCount = consts.classCount
+            self.lbl = []
 
         if(self.filename.endswith(".ply")):
             from plyfile import PlyData
@@ -1100,8 +1142,12 @@ class TestSequence(Sequence):
             xyzftsl = np.load(self.filename)
             if(xyzftsl.shape[1] == 5):
                 self.xyzrgb = xyzftsl[:, :4]
+                if(self.test):
+                    self.lbl = xyzftsl[:, 4] - 1
             else: #if(xyzftsl.shape[1] == 7):
-                self.xyzrgb = xyzftsl[:, :6]     
+                self.xyzrgb = xyzftsl[:, :6]
+                if(self.test):
+                    self.lbl = xyzftsl[:, 6] - 1
         elif(self.filename.endswith(".las")):
             from dataTool import ReadXYZRGB            
             xyz, rgb = ReadXYZRGB(self.filename)
@@ -1161,11 +1207,16 @@ class TestSequence(Sequence):
         if not self.nocolor:
             ftsList = np.zeros((size, self.npoints, self.featureComponents), np.float32)
         ptsList = np.zeros((size, self.npoints, 3), np.float32)
+        if(self.test):
+            lblList = np.zeros((size, self.npoints, self.classCount), np.float32)
         
         for i in range(size):
             # get the data            
             mask = self.compute_mask(self.pts[index*self.batchSize + i], self.bs)
             pts = self.xyzrgb[mask]
+
+            if(self.test):
+                lbl = self.lbl[mask]
 
             if(len(pts) < self.npoints):
                 self.sparseCubes += 1
@@ -1174,6 +1225,8 @@ class TestSequence(Sequence):
             # choose right number of points
             choice = np.random.choice(pts.shape[0], self.npoints, replace=True)
             pts = pts[choice]
+            if(self.test):
+                lbl = lbl[choice]
 
             # labels will contain indices in the original point cloud
             idx = np.where(mask)[0][choice]
@@ -1192,11 +1245,17 @@ class TestSequence(Sequence):
             if not self.nocolor:
                 ftsList[i] = np.expand_dims(fts, 0)
             ptsList[i] = np.expand_dims(pts, 0)
+            if self.test:
+                lblList[i, np.arange(len(lbl)), lbl.astype(int)] = 1
+
+        add_lbl = []
+        if self.test:
+            add_lbl = [lblList]
 
         if self.nocolor:
-            return [ptsList]
+            return [ptsList] + add_lbl
         else: #works for RGB
-            return [ftsList, ptsList]
+            return [ftsList, ptsList] + add_lbl
 
 def GenerateData(modelPath, testFiles, consts, outputFolder, NameIncludeModelInfo = False):
     model, _ = LoadModel(modelPath, consts)
@@ -1670,12 +1729,12 @@ def RenameSemantic3DFiles(folder):
 
 if __name__ == "__main__":
     from NearestNeighbors import NearestNeighborsLayer, SampleNearestNeighborsLayer
-    from KDTree import KDTreeLayer, KDTreeSampleLayer
+    from KDTree import KDTreeLayer, KDTreeSampleLayer    
 
     # consts = NPM3D()
     consts = Semantic3D()
 
-    # consts.noFeature = True
+    consts.noFeature = True
     # consts.Fusion = True
     consts.Scale = True
     consts.Rotate = True
@@ -1690,14 +1749,19 @@ if __name__ == "__main__":
     # modelPath = ["Sem3D(vox)(RGB)(FullAugment)_55_train(85.7)_val(79.9)", "Sem3D(NOCOL)_50_train(87.4)_val(69.1)"]
     # modelPath = ["NPM3D(80&5)(RGB)(NoScale)_28_train(88.3)_val(73.2).h5", "NPM3D(80&5)(NOCOL)(FullAugment)_28_train(87.3)_val(71.5).h5"]
     # modelPath = LatestModel("Sem3D(14&1)(noFeature)(Scale)(Rotate)(Mirror)(Jitter)")
-    # modelPath = LatestModel(consts.Name())
-    
+    # modelPath = LatestModel(consts.Name())    
+
     if(isinstance(modelPath,list)):
         consts.Fusion = True
 
     if(not consts.Fusion and not Const.IsWindowsMachine()):
         tf.config.optimizer.set_jit(True) #Gives more than 10% boost!!!
         print("XLA enabled.")
+
+    # modelPath = ["Sem3D(14&1)(noFeature)(Scale)(Rotate)(Mirror)(Jitter)_9bbee708a7814063af9d85070452abd8_59_train(85.2)_val(72.8)", 
+    #             "Sem3D(14&1)(noFeature)(Rotate)(Mirror)(Jitter)_ff2eb229084247d9a1c63caa519e9890_58_train(84.9)_val(75.5)",
+    #             "Sem3D(14&1)(noFeature)_dffc17f77e924894bbdbdad818ab6994_40_train(85.1)_val(68.8)"]
+    # EvaluateModels(modelPath, testFiles, consts)
 
     # TrainModel(trainFiles, testFiles, consts, modelPath = modelPath)# , epochs = 8) #continue train
     TrainModel(trainFiles, testFiles, consts) #new model
