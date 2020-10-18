@@ -678,6 +678,39 @@ def ReadHDF5Boxes(path):
 
     return boundindBoxes
 
+def ConvertToLas(folder, outputFolder):
+    import laspy
+
+    pcFiles = [f for f in listdir(folder) if isfile(join(folder, f))]
+    
+    os.makedirs(outputFolder, exist_ok=True)
+    for file in pcFiles:
+        inputFile = join(folder, file)
+        outputFile = join(outputFolder, os.path.splitext(file)[0]+".las")         
+                
+        lasFile = laspy.file.File(outputFile, mode = "w", header=laspy.header.Header(point_format=2))
+        
+        xyz = ReadXYZ(inputFile)
+        lasFile.x = xyz[:,0]
+        lasFile.y = xyz[:,1]
+        lasFile.z = xyz[:,2]
+        del(xyz)
+        xyz = None
+
+        rgb = ReadRGB(inputFile)
+        lasFile.red = rgb[:, 0]
+        lasFile.green = rgb[:, 1]
+        lasFile.blue = rgb[:, 2]
+        del(rgb)
+        rgb = None
+
+        lbl = ReadLabels(inputFile)
+        lasFile.Classification = np.squeeze(lbl, axis=1)
+        del(lbl)
+        lbl = None
+
+        lasFile.close()
+
 class DataReader:
     threads = []
     dataset = []
@@ -1966,37 +1999,133 @@ def VisualizeError():
 
     DataTool().VisualizePointCloud([xyz, errorPts], [pts_colors, [1,0,0]], downSample=False)
 
+def PostProcessCurbScores(scores):
+    pred = np.zeros((scores.shape[0],))
+    
+    truePoints = np.where(scores.argmax(1) == 1)[0]
+    pred[truePoints] = 1
+
+    possiblePoints = np.unique(np.concatenate([truePoints, np.where(scores[:, 1] > 50)[0]]))
+    pred[possiblePoints] = 1
+
+    # pred[np.where(np.abs(scores[:, 0] - scores[:, 1]) > 5)[0]] = 1
+
+    return pred
+
+def SplitCurbs(curbPts, distance = 3):
+    import scipy.cluster.hierarchy as hcluster    
+
+    clusters = hcluster.fclusterdata(curbPts, distance, criterion="distance")
+    clusters = [curbPts[np.where(clusters == i)[0]] for i in set(clusters)]
+
+    return clusters
+
+def RandomColor():    
+    return np.random.uniform(0,1, [3,])
+
+def CutCurb(pts):
+    from matplotlib import pyplot as plt
+
+    N = 300
+    t = np.linspace(0, 2*np.pi, N)
+    x = 5*np.cos(t) + 0.2*np.random.normal(size=N) + 1
+    y = 4*np.sin(t+0.5) + 0.2*np.random.normal(size=N)
+    plt.plot(x, y, '.')     # given points
+    # plt.show()
+
+    xmean, ymean = x.mean(), y.mean()
+    x -= xmean
+    y -= ymean
+    U, S, V = np.linalg.svd(np.stack((x, y)))
+
+    tt = np.linspace(0, 2*np.pi, 1000)
+    circle = np.stack((np.cos(tt), np.sin(tt)))    # unit circle
+    transform = np.sqrt(2/N) * U.dot(np.diag(S))   # transformation matrix
+    fit = transform.dot(circle) + np.array([[xmean], [ymean]])
+    plt.plot(fit[0, :], fit[1, :], 'r')
+    plt.show()
+
+    
+    fitter = np.poly1d(np.polyfit(pts[:,1], pts[:,0], 2))
+    curbY = np.linspace(np.min(pts[:,1]), np.max(pts[:,1]), 1000)
+    curbX = fitter(curbY)
+
+    newPts = np.array([[curbX[i], curbY[i], pts[:,2].max()] for i in range(len(curbX))])
+    
+    # numpy.polyfit(x, y, deg, rcond=None, full=False, w=None, cov=False)[source]    
+    # DataTool().VisualizePointCloud([pts, newPts], dataColors = [[0,0,1], [1,0,0]])
+
+    return newPts
+
 if __name__ == "__main__":
     print()
 
-    mainPC = ReadRGB(r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_0.npy")
+    file = "C:/git_repos/LineExtraction/data/preprocessed_data_voxel(0.1)_curb(1.0, 0.7)/park_extracted.npy"
+    predFile = "C:/git_repos/ConvPoint_Keras/data/Curbs(7_1)(noFeature)(Rotate)_21bdbe6aa82d4e259526ab46577e795a_25_train(75.1)_val(60.7)/park_extracted.labels.npy"
+    curbScores = "C:/git_repos/ConvPoint_Keras/data/Curbs(7_1)(noFeature)(Rotate)_21bdbe6aa82d4e259526ab46577e795a_25_train(75.1)_val(60.7)/park_extracted_scores.npy"
 
-    mainPC = ReadXYZ(r"G:\PointCloud DataSets\NPM3D\training_10_classes\Lille2.ply")
-    train = [r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_0.npy",
-            r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_1.npy",
-            r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_2.npy",            
-            r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_8.npy",
-            r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_9.npy"]
-    test = r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_10.npy"
-    nextTrain = r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_3.npy"
+    # file = "C:\git_repos\LineExtraction\data\preprocessed_data/SmallArea2.npy"
+    # predFile = "C:/git_repos/ConvPoint_Keras/data/Curbs(7_1)(noFeature)(Rotate)_21bdbe6aa82d4e259526ab46577e795a_25_train(75.1)_val(60.7)/SmallArea2.labels.npy"
+    # curbScores = "C:/git_repos/ConvPoint_Keras/data/Curbs(7_1)(noFeature)(Rotate)_21bdbe6aa82d4e259526ab46577e795a_25_train(75.1)_val(60.7)/SmallArea2_scores.npy"
 
-    goodPoints = []
-    colors = []
-    for file in train:
-        goodPoints.append(ReadXYZ(file))
-        colors.append(np.array([0.0, 1.0, 0.0]))
+    xyz = ReadXYZ(file)
+    rgb = ReadRGB(file)
+    # true = ReadLabels(file)
+    
+    pred1 = np.squeeze(ReadLabels(predFile), axis=1)
+    linePoints = np.where(pred1 == 1)[0]
+    DataTool().VisualizePointCloudAsync([np.delete(xyz, linePoints, axis=0), xyz[linePoints]], [np.delete(rgb, linePoints, axis=0), [1,0,0]], windowName="pred1")
+        
+    pred2 = PostProcessCurbScores(np.load(curbScores))
+    linePoints = np.where(pred2 == 1)[0]
+    # DataTool().VisualizePointCloudAsync([np.delete(xyz, linePoints, axis=0), xyz[linePoints]], [np.delete(rgb, linePoints, axis=0), [1,0,0]], windowName="pred2")
 
-    goodPoints.append(ReadXYZ(test))
-    colors.append(np.array([1.0, 0.0, 0.0]))
+    pts = xyz[linePoints]
+    # DataTool().VisualizePointCloudAsync([pts])
+    curbs = SplitCurbs(pts, distance = 5)
+    curbsColors = [RandomColor() for i in range(len(curbs))]
+    # DataTool().VisualizePointCloudAsync(curbs, dataColors = curbsColors, windowName="Clusters")
 
-    goodPoints.append(ReadXYZ(nextTrain))
-    colors.append(np.array([0.0, 0.0, 1.0]))
+    linePoints = [CutCurb(curb) for curb in curbs if len(curb) > 100]
+    lineColors = [[1,0,0] for i in range(len(linePoints))]
+    DataTool().VisualizePointCloudAsync(curbs + linePoints, dataColors = curbsColors + lineColors)
 
-    goodPoints.append(mainPC)
-    colors.append(None)
+    DataTool().VisualizePointCloudAsync([xyz] + linePoints, [rgb] + lineColors, windowName="Result")
+
+
+    # linePoints = np.where(true == 1)[0]
+    # DataTool().VisualizePointCloud([np.delete(xyz, linePoints, axis=0), xyz[linePoints]], [np.delete(rgb, linePoints, axis=0), [1,0,0]], windowName="Test data")
+
+    # ConvertToLas("G:/PointCloud DataSets/semantic3d/rawTrain", "G:/PointCloud DataSets/semantic3d/rawTrainLas")
+
+    # mainPC = ReadRGB(r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_0.npy")
+
+    # mainPC = ReadXYZ(r"G:\PointCloud DataSets\NPM3D\training_10_classes\Lille2.ply")
+    # train = [r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_0.npy",
+    #         r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_1.npy",
+    #         r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_2.npy",            
+    #         r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_8.npy",
+    #         r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_9.npy"]
+    # test = r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_10.npy"
+    # nextTrain = r"G:\PointCloud DataSets\NPM3D\torch_generated_data\train_pointclouds\Lille2_3.npy"
+
+    # goodPoints = []
+    # colors = []
+    # for file in train:
+    #     goodPoints.append(ReadXYZ(file))
+    #     colors.append(np.array([0.0, 1.0, 0.0]))
+
+    # goodPoints.append(ReadXYZ(test))
+    # colors.append(np.array([1.0, 0.0, 0.0]))
+
+    # goodPoints.append(ReadXYZ(nextTrain))
+    # colors.append(np.array([0.0, 0.0, 1.0]))
+
+    # goodPoints.append(mainPC)
+    # colors.append(None)
     
 
-    DataTool().VisualizePointCloud(goodPoints, colors, downSample=True)
+    # DataTool().VisualizePointCloud(goodPoints, colors, downSample=True)
 
 
     # file = r"G:\PointCloud DataSets\semantic3d\processedTrain\domfountain_station3_xyz_intensity_rgb_voxels.npy"

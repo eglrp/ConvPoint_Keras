@@ -51,6 +51,12 @@ class Paths:
         rawSmallPc = rawTrain + "bildstein_station3_xyz_intensity_rgb.hdf5"
         procSmallPc = processedTrain + "bildstein_station3_xyz_intensity_rgb.npy"
     
+    class Curbs:
+        pointCloudPath = mainPath + "curbs/"
+    
+        processedTrain = pointCloudPath+"processedTrain/"
+        processedTest = pointCloudPath+"processedTest/"
+
     class NPM3D:
         pointCloudPath = mainPath + "NPM3D/"
         rawTrain = pointCloudPath+"training_10_classes/"
@@ -74,7 +80,7 @@ class Paths:
         os.mkdir(dataPath)
     	    
     @staticmethod
-    def GetFiles(folder, excludeFiles = None, onlyNames = False, withoutExtension = False, findExtesions = ('.hdf5', '.npy', '.las', '.ply', '.txt')):
+    def GetFiles(folder, excludeFiles = None, onlyNames = False, withoutExtension = False, findExtesions = ('.hdf5', '.npy', '.las', '.ply')):
         if(isinstance(findExtesions, list)):
             findExtesions = tuple(findExtesions)
 
@@ -141,6 +147,11 @@ class Label:
         cars = int(8)
         Count = int(9)
         Names = ["unlabeled", "manMadeTerrain", "naturalTerrain", "highVegetation", "lowVegetation", "buildings", "hardScape", "scanningArtefacts", "cars"]
+    
+    class Curbs:
+        other = int(0)
+        curbs = int(1)
+        Names = ["other", "curbs"]
         
     class NPM3D:
         unclassified = int(0)

@@ -13,7 +13,7 @@ from sklearn.metrics import confusion_matrix
 from PIL import Image, ImageEnhance, ImageOps
 
 import random
-from notify_run import Notify
+# from notify_run import Notify
 
 class Const:
     @staticmethod
@@ -139,7 +139,7 @@ class Const:
 
         return name
 
-    def TestFiles(self):
+    def TestFiles(self):        
         return Paths.JoinPaths(self.Paths.processedTrain, self.testFiles)
 
     def TrainFiles(self):
@@ -177,7 +177,39 @@ class Semantic3D(Const):
                 "stgallencathedral_station3_intensity_rgb" : "stgallencathedral3",
                 "stgallencathedral_station6_intensity_rgb" : "stgallencathedral6",
                 }
-        
+
+class Curbs(Const):        
+    pointComponents = 3
+    featureComponents = 3
+    classCount = 2
+    classNames = Label.Curbs.Names
+    test_step = 0.5
+    name = "Curbs"
+    Paths = Paths.Curbs
+
+    if os.path.isdir("C:/Program Files"):
+        batchSize = 16
+    else:
+        batchSize = 25
+
+    testFiles = [
+                    "park_extracted.npy",
+                    "SmallArea2.npy",
+                ]
+    
+    excludeFiles = [
+                    "powerlines_dataset"
+                ]
+
+    def FilterCurbAndLineFiles(self, files):
+        return [file for file in files if not file.endswith("_curbs.npy") and not file.endswith("_lines.npy")]
+
+    def TestFiles(self):        
+        return self.FilterCurbAndLineFiles(super(Curbs, self).TestFiles())
+
+    def TrainFiles(self):
+        return self.FilterCurbAndLineFiles(super(Curbs, self).TrainFiles())
+
 class NPM3D(Const):
     pointComponents = 3
     featureComponents = 1
@@ -637,12 +669,48 @@ def moving_miou_metric(classCount):
 
     return moving_iou
 
+class IOU(tf.keras.metrics.Metric):
+    def __init__(self, classCount, classIndex, name='iou', **kwargs):
+        super(IOU, self).__init__(name=name, **kwargs)
+        self.cm = self.add_weight(name=name, shape = (classCount, classCount), initializer='zeros', dtype = tf.int64)
+        self.classCount = classCount
+        self.classIndex = classIndex
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        TrueLbl = tf.argmax(tf.reshape(y_true, [-1, self.classCount]), axis= 1)
+        PredLbl = tf.argmax(tf.reshape(y_pred, [-1, self.classCount]), axis= 1)
+        confusion_matrix = tf.math.confusion_matrix(TrueLbl, PredLbl, self.classCount)
+        self.cm.assign_add(tf.cast(confusion_matrix, tf.int64))
+
+    def result(self):
+        union = tf.linalg.diag_part(self.cm)
+        rowSum = tf.math.reduce_sum(self.cm, axis = 0)
+        colSum = tf.math.reduce_sum(self.cm, axis = 1)
+        intersection = (colSum + rowSum - union)
+        intersection = tf.where(tf.equal(intersection, tf.constant(0, dtype=tf.int64)), tf.constant(1, dtype=tf.int64), intersection)
+        iou =  union / intersection
+        return tf.cast(tf.expand_dims(iou, 1)[self.classIndex], tf.float64)
+
+    def reset_states(self):
+        # The state of the metric will be reset at the start of each epoch.
+        self.cm.assign(tf.zeros((self.classCount, self.classCount), dtype=tf.int64))
+
+def weighted_categorical_crossentropy(weights):
+    # weights = [0.9,0.05,0.04,0.01]
+    def wcce(y_true, y_pred):
+        Kweights = tf.constant(weights)
+        y_true = tf.cast(y_true, y_pred.dtype)
+        return tf.keras.losses.categorical_crossentropy(y_true, y_pred) * tf.math.reduce_sum(y_true * Kweights, axis=-1)
+
+    return wcce
+
 def CompileModel(model, classCount):
     model.compile(
         optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3, epsilon = 1e-8),
         loss = tf.keras.losses.CategoricalCrossentropy(),
-        metrics=['accuracy', MIOU(classCount)]
-        )
+        # loss = weighted_categorical_crossentropy([0.7, 5]),
+        metrics= [IOU(classCount, 0, name="other"), IOU(classCount, 1, name="curb")] if classCount == 2 else [MIOU(classCount)]
+    )
     return model
 
 class IOUPerClass(tf.keras.callbacks.Callback):
@@ -742,11 +810,11 @@ class ModelSaveCallback(tf.keras.callbacks.Callback):
         WriteToLog(f"Training: {modelNamePrefix}")
 
     def on_epoch_end(self, epoch, logs=None):
-        self.epoch = epoch
+        self.epoch = epoch + 1
         if(len(logs) > 0):
-            miou = logs.get(self.metric)[0][0]*100
+            miou = logs.get(self.metric)[0]*100
             val_metric = "val_"+self.metric
-            val_miou = logs.get(val_metric)[0][0]*100
+            val_miou = logs.get(val_metric)[0]*100
             SaveModel(self.saveDir, epoch, self.model, miou, val_miou, self.modelNamePrefix)
 
             message = "Ep: {0}. {1}: {2:.3}%. {3}: {4:.3}%".format(self.epoch, self.metric, miou, val_metric, val_miou)
@@ -777,6 +845,7 @@ def ParseEpoch(modelPath):
 
 def GetValidationData(testFiles, consts, batchesCount = 100, newDataGeneration = False):
     print("Gathering validation data...")
+    print(f"Test files: {testFiles}")
 
     if(newDataGeneration):
         PrintToLog("Use TestSequence for validation.")
@@ -862,26 +931,28 @@ def TrainModel(trainFiles, testFiles, consts : Const, modelPath = None, saveDir 
     logsPath = os.path.join(consts.logsPath, Const.RemoveUID(modelName))
     os.makedirs(logsPath, exist_ok=True)
     callbacks_list = []    
-    callbacks_list.append(ModelSaveCallback(logSaveDir, trainingSteps, "miou", modelNamePrefix = modelName, sendNotifications=sendNotifications))        
-    callbacks_list.append(IOUPerClass(logsPath, consts.classNames[1:], first_epoch+1))
-    callbacks_list.append(tf.keras.callbacks.TensorBoard(log_dir=logsPath, update_freq="batch", histogram_freq=0, profile_batch = 0)) # tensorboard 2.0.2
+    callbacks_list.append(ModelSaveCallback(logSaveDir, trainingSteps, "curb", modelNamePrefix = modelName, sendNotifications=sendNotifications))
+    # callbacks_list.append(IOUPerClass(logsPath, consts.classNames[1:], first_epoch+1))
+    # callbacks_list.append(tf.keras.callbacks.TensorBoard(log_dir=logsPath, update_freq="batch", histogram_freq=0, profile_batch = 0)) # tensorboard 2.0.2
 
     seq = TrainSequence(trainFiles, trainingSteps, consts)
-    validationData = None if len(testFiles) == 0 else GetValidationData(testFiles, consts, 150 if not Const.IsWindowsMachine() else 10)    
+    validationSteps = int(((150 if not Const.IsWindowsMachine() else 10) * 16)/consts.batchSize)
+    validationData = None if len(testFiles) == 0 else GetValidationData(testFiles, consts, validationSteps)
 
     if(epochs is None):
         epochs = 20 if consts.Fusion else 100
 
-    model.fit(seq, validation_data = validationData, epochs = epochs, workers = consts.batchSize, max_queue_size = 300, callbacks=callbacks_list, initial_epoch = first_epoch)
+    model.fit(seq, validation_data = validationData, epochs = epochs, batch_size = consts.batchSize, workers = consts.batchSize, max_queue_size = 300, callbacks=callbacks_list, initial_epoch = first_epoch)
 
 def EvaluateModels(modelsList, testFiles, consts, x = None, y = None):
     if(x is None or y is None):
-        x, y = GetValidationData(testFiles, consts, 150 if not Const.IsWindowsMachine() else 10, newDataGeneration = False)
+        validationSteps = int(((150 if not Const.IsWindowsMachine() else 10) * 16)/consts.batchSize)
+        x, y = GetValidationData(testFiles, consts, validationSteps, newDataGeneration = False)
 
     for file in modelsList:
         model, _ = LoadModel(file, consts)
         metrics = model.evaluate(x, y, batch_size = consts.batchSize, workers = consts.batchSize, max_queue_size = 300)
-        print(f"miou: {metrics[2][0][0]*100:.3}")
+        # print(f"miou: {metrics[2][0][0]*100:.3}")
 
 def SaveModel(saveDir, epoch, model, train_score, val_score=0, modelNamePrefix = ""):
     if(modelNamePrefix != ""):
@@ -999,6 +1070,8 @@ def ScalePoints(points, sigma = 0.02):
 class TrainSequence(Sequence):
     def __init__(self, filelist, iteration_number, consts : Const, dataAugmentation = True):
         self.filelist = filelist
+        self.ptsList = [np.load(file) for file in self.filelist]
+
         self.cts = consts
         self.dataAugmentation = dataAugmentation
         self.iterations = iteration_number
@@ -1027,13 +1100,13 @@ class TrainSequence(Sequence):
         for i in range(self.cts.batchSize):
             # load the data
             index = random.randint(0, len(self.filelist)-1)
-            pts = np.load(self.filelist[index])
+            pts = self.ptsList[index]
             
-            if(self.cts.featureComponents == 1):
-                keepPts = (pts[:, 4] != 0)
-            else:
-                keepPts = (pts[:, 6] != 0)
-            pts = pts[keepPts]
+            # if(self.cts.featureComponents == 1):
+            #     keepPts = (pts[:, 4] != 0)
+            # else:
+            #     keepPts = (pts[:, 6] != 0)
+            # pts = pts[keepPts]
 
             # get the features
             if(self.cts.featureComponents == 1):
@@ -1045,14 +1118,14 @@ class TrainSequence(Sequence):
                     fts = pts[:,3:6].astype(np.float32)
                 lbs = pts[:,6].astype(int)
 
-            lbs = lbs-1 #class 0 is filtered out
+            if(np.min(lbs) == 1):
+                lbs -= 1 #class 0 is filtered out
             
             # get the point coordinates
             pts = pts[:, :3]
 
             # pick a random point
             pt_id = random.randint(0, pts.shape[0]-1)
-
             pt = pts[pt_id]
 
             # create the mask
@@ -1104,6 +1177,8 @@ class TrainSequence(Sequence):
             #     # visualize data
             #     dt = DataTool()
             #     dt.VisualizePointCloud([temppts], [tempfts], windowName = "Augmented")
+            # linePoints = np.where(templbs[:, 1] == 1)[0]
+            # DataTool().VisualizePointCloud([np.delete(temppts, linePoints, axis=0), temppts[linePoints]], [[0,0,1], [1,0,0]], windowName="Sampled")
 
             if not self.cts.noFeature:
                 ftsList[i] = np.expand_dims(tempfts, 0)
@@ -1283,7 +1358,7 @@ def GenerateData(modelPath, testFiles, consts, outputFolder, NameIncludeModelInf
         GenerateFile(model, file, consts, newFile)
         print("Done in {:02d}:{:02d} min.".format(int((time() - t)/60), int((time() - t)%60)))
 
-def GenerateLargeData(modelPath, voxelFiles, orgFiles, consts, outputFolder, replace = False, Upscale = True, NameIncludeModelInfo = False):
+def GenerateLargeData(modelPath, voxelFiles, consts, outputFolder, orgFiles = None, replace = False, Upscale = True, NameIncludeModelInfo = False):
     model, _ = LoadModel(modelPath, consts)
 
     if(not NameIncludeModelInfo):
@@ -1300,12 +1375,16 @@ def GenerateLargeData(modelPath, voxelFiles, orgFiles, consts, outputFolder, rep
     
     for voxelFile in voxelFiles:
         baseName = Paths.FileName(voxelFile).replace("_voxels", "")
-        orgFile =  [f for f in orgFiles if Paths.FileName(f).startswith(baseName)]
-        if(len(orgFile) != 1):
-            print("Skip: ", voxelFile)
-            continue
 
-        orgFile = orgFile[0]
+        if not (orgFiles is None):
+            orgFile =  [f for f in orgFiles if Paths.FileName(f).startswith(baseName)]
+            if(len(orgFile) != 1):
+                print("Skip: ", voxelFile)
+                continue
+            orgFile = orgFile[0]
+        else:
+            orgFile = None
+
         t = time()
 
         if(NameIncludeModelInfo):
@@ -1332,16 +1411,28 @@ def GenerateLargeData(modelPath, voxelFiles, orgFiles, consts, outputFolder, rep
         os.remove(flagFile)
         print("{} generated in {:02d}:{:02d} min.".format(baseName, int((time() - t)/60), int((time() - t)%60)))
 
-def GenerateFile(model, file, consts, outputFile):
+def GenerateFile(model, file, consts, outputFile, saveScores = True):
     seq = TestSequence(file, consts)
     output = model.predict(seq, workers = consts.batchSize, max_queue_size = 300, verbose = 1)
+
+    # for y in range(len(seq)):
+    #     pts = seq.__getitem__(y)
+    #     pts = pts[0]
+    #     pred = model.predict(pts)
+
+    #     for i in range(len(pred)):
+    #         predPtsIdx = np.where(np.argmax(pred[i], axis = 1) == 1)[0]
+    #         # truePtsIdx = np.where(np.argmax(lbl[i], axis = 1) == 1)[0]
+            
+    #         # print(f"True curb points: {len(truePtsIdx)}. Found curb points: {len(predPtsIdx)}")
+    #         DataTool().VisualizePointCloud([np.delete(pts[i], predPtsIdx, axis=0), pts[i][predPtsIdx]], [[0,0,1], [1,0,0]])
 
     idx = seq.idxList
     xyzrgb = seq.xyzrgb[:,:3]
     scores = np.zeros((xyzrgb.shape[0], consts.classCount))
 
     for i in range(len(output)):
-        scores[idx[i]] += output[i]
+        scores[idx[i]] += output[i]    
 
     mask = np.logical_not(scores.sum(1)==0)
     scores = scores[mask]
@@ -1351,7 +1442,15 @@ def GenerateFile(model, file, consts, outputFile):
     indexes = nearest_correspondance(pts_src.astype(np.float32), xyzrgb.astype(np.float32), K=1)
     scores = scores[indexes]
 
-    scores = scores.argmax(1) + 1 #because all class are shifted to avoid 0 - unclassified
+    if saveScores:
+        scoresFile = outputFile.replace(".txt", "_scores.npy")
+        np.save(scoresFile, scores)
+        print(f"Scores saved to: {scoresFile}")
+
+    # scores = scores.argmax(1) + 1 #because all class are shifted to avoid 0 - unclassified
+    scores = scores.argmax(1) #because all class are shifted to avoid 0 - unclassified
+    
+    print(f"class 0: {len(np.where(scores == 0)[0])}, class 1: {len(np.where(scores == 1)[0])}")
 
     import pandas as pd
     print("Save labels: ", scores.shape)
@@ -1383,7 +1482,7 @@ def UpscaleToOriginal(originalPoints, pts_src, lbl, outputFile = None):
     else:
         return fullLbl
 
-def GenerateLargeFile(model, voxelFile, originalFile, consts, outputFile, Upscale = True):
+def GenerateLargeFile(model, voxelFile, originalFile, consts, outputFile, Upscale = True, saveScores = True):
     from dataTool import ReadXYZ
     from tqdm import tqdm
 
@@ -1405,9 +1504,14 @@ def GenerateLargeFile(model, voxelFile, originalFile, consts, outputFile, Upscal
     scores = scores[mask]
     pts_src = xyzrgb[mask].astype(np.float32)
 
-    lbl = scores.argmax(1) + 1 #because all class are shifted to avoid 0 - unclassified 
+    if saveScores:
+        scoresFile = os.path.splitext(outputFile)[0]+"_scores.npy"
+        np.save(scoresFile, scores)
+        print(f"Scores saved to: {scoresFile}")
+
+    lbl = scores.argmax(1)
     
-    if(Upscale):
+    if(Upscale and not (originalFile is None)):
         print("Load original file: ", originalFile)
         originalPoints = ReadXYZ(originalFile).astype(np.float32)
         assert(originalPoints.shape[1] == 3)
@@ -1729,23 +1833,26 @@ def RenameSemantic3DFiles(folder):
 
 if __name__ == "__main__":
     from NearestNeighbors import NearestNeighborsLayer, SampleNearestNeighborsLayer
-    from KDTree import KDTreeLayer, KDTreeSampleLayer    
+    from KDTree import KDTreeLayer, KDTreeSampleLayer
+    modelPath = None
 
     # consts = NPM3D()
-    consts = Semantic3D()
+    # consts = Semantic3D()
+    consts = Curbs()
 
     consts.noFeature = True
     # consts.Fusion = True
-    consts.Scale = True
+    # consts.Scale = True
     consts.Rotate = True
-    consts.Mirror = True
+    # consts.Mirror = True
     # consts.Jitter = True
-    consts.FtrAugment = True
+    # consts.FtrAugment = True
 
     testFiles = consts.TestFiles()
     trainFiles = consts.TrainFiles()
 
-    # modelPath = "Sem3D(14&1)(Rotate)(Mirror)(Jitter)(FtrAugment)_251595a66b8d48dcb6d8f46ccd7d8afe_60_train(85.4)_val(79.6).h5"
+    modelPath = "Curbs(11&2)(noFeature)(Rotate)_71f9dea753db435ba7947d01e6a476c7_23_train(73.1)_val(64.6).h5"
+    # modelPath = "Curbs(7&1)(noFeature)(Rotate)_21bdbe6aa82d4e259526ab46577e795a_25_train(75.1)_val(60.7).h5"
     # modelPath = ["Sem3D(vox)(RGB)(FullAugment)_55_train(85.7)_val(79.9)", "Sem3D(NOCOL)_50_train(87.4)_val(69.1)"]
     # modelPath = ["NPM3D(80&5)(RGB)(NoScale)_28_train(88.3)_val(73.2).h5", "NPM3D(80&5)(NOCOL)(FullAugment)_28_train(87.3)_val(71.5).h5"]
     # modelPath = LatestModel("Sem3D(14&1)(noFeature)(Scale)(Rotate)(Mirror)(Jitter)")
@@ -1761,18 +1868,22 @@ if __name__ == "__main__":
     # modelPath = ["Sem3D(14&1)(noFeature)(Scale)(Rotate)(Mirror)(Jitter)_9bbee708a7814063af9d85070452abd8_59_train(85.2)_val(72.8)", 
     #             "Sem3D(14&1)(noFeature)(Rotate)(Mirror)(Jitter)_ff2eb229084247d9a1c63caa519e9890_58_train(84.9)_val(75.5)",
     #             "Sem3D(14&1)(noFeature)_dffc17f77e924894bbdbdad818ab6994_40_train(85.1)_val(68.8)"]
-    # EvaluateModels(modelPath, testFiles, consts)
+    # EvaluateModels([modelPath], testFiles, consts)
 
-    # TrainModel(trainFiles, testFiles, consts, modelPath = modelPath)# , epochs = 8) #continue train
-    TrainModel(trainFiles, testFiles, consts) #new model
+    TrainModel(trainFiles, testFiles, consts, modelPath = modelPath)# , epochs = 8) #continue train
+    # TrainModel(trainFiles, testFiles, consts) #new model
 
     # modelPath = HighestValMIOUModel("NPM3D(80&5)(fusion)(FullAugment)")
 
     #NPM3D
     # GenerateData(modelPath, Paths.GetFiles(consts.Paths.rawTest), consts, consts.Paths.generatedTest)
     
-    #Semantic3D
-    # GenerateLargeData(modelPath, [Paths.Semantic3D.processedTest+"sg28_station2_intensity_rgb_voxels.npy"], Paths.Semantic3D.rawTest, consts, consts.Paths.generatedTest, Upscale=False)
+    #Semantic3D    
     # GenerateLargeData(modelPath, Paths.Semantic3D.processedTest, Paths.Semantic3D.rawTest, consts, consts.Paths.generatedTest, Upscale=False)
     # UpscaleFilesAsync(modelPath, Paths.Semantic3D.processedTest, Paths.Semantic3D.rawTest, Paths.Semantic3D.generatedTest)
     # RenameSemantic3DFiles(Paths.Semantic3D.generatedTest + Paths.FileName(modelPath))
+
+    #Curbs
+    EvaluateModels([modelPath], testFiles, consts)
+    # GenerateData(modelPath, testFiles, consts, consts.Paths.pointCloudPath+"/generated/")
+    GenerateLargeData(modelPath, testFiles, consts, consts.Paths.pointCloudPath+"/generated/")
