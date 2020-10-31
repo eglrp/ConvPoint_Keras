@@ -371,3 +371,6 @@ MigrationBackup/
 **/packages/
 *.point
 *knn.cpp
+RenderOption_*
+ScreenCamera_*
+ScreenCapture_*

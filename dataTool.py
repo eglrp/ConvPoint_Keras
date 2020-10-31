@@ -1721,6 +1721,9 @@ def SeparateClassesAndDisplay(xyz, rgb = None, lbl = None, downSample = False, w
     #Semantic3D
     elif(np.max(lbl) == 8):
         colors = [grey, verygreen, green, mint, red, blue, brown, black]
+    elif(np.max(lbl) == 7):
+        lbl += 1
+        colors = [grey, verygreen, green, mint, red, blue, brown, black]
     
     errPts = None
     if(not (errorPoints is None)):
@@ -2188,14 +2191,14 @@ if __name__ == "__main__":
 
     # SplitDataFiles(Paths.NPM3D.processedTrain, Paths.NPM3D.processedTest, 3)
 
-    # PreprocessDatasetToVoxels(Paths.Semantic3D.rawTestSmall, Paths.Semantic3D.generatedTestSmall, override=False)
+    # PreprocessDatasetToVoxels(Paths.Semantic3D.rawTestReduced, Paths.Semantic3D.processedTestReduced, override=False)
     # PreprocessDatasetToVoxels(Paths.Semantic3D.rawTrain, r"G:\PointCloud DataSets\semantic3d\processedTrain(0.15m)", override=False, extension=".hdf5", voxelSize=0.15)
     # PreprocessDatasetToVoxels(Paths.Semantic3D.rawTest, Paths.Semantic3D.processedTest, override=False, extension=".hdf5")
     # PreprocessDatasetToVoxels(r"G:\PointCloud DataSets\NPM3D\\training_10_classes", Paths.NPM3D.processedTrain,  override=False, extension=".ply")
     # PreprocessDatasetToVoxels(Paths.rawTrain, "G:/PointCloud DataSets/semenatic3d/processedTrain(0.02_voxels)", override=False, voxelSize=0.02)
 
     # dataTool = DataTool()
-    # dataTool.ConvertDatasets(r"G:\PointCloud DataSets\semantic3d\rawTestSmallTXT", Paths.Semantic3D.rawTestSmall)
+    # dataTool.ConvertDatasets(Paths.Semantic3D.rawTestReduced, Paths.Semantic3D.rawTestReduced)
     # dataTool.ConvertToBin("G:/PointCloud DataSets/semenatic3d/train_txt/neugasse_station1_xyz_intensity_rgb.txt",
     #                       "G:/PointCloud DataSets/semenatic3d/train_txt/neugasse_station1_xyz_intensity_rgb.labels",
     #                       "G:/PointCloud DataSets/semenatic3d/rawTrain/neugasse_station1_xyz_intensity_rgb")#,".npy")

@@ -45,8 +45,10 @@ class Paths:
     
         rawTrain = pointCloudPath+"rawTrain/"
         rawTest = pointCloudPath+"rawTest/"
+        rawTestReduced = pointCloudPath+"rawTestReduced/"
         processedTrain = pointCloudPath+"processedTrain/"
         processedTest = pointCloudPath+"processedTest/"
+        processedTestReduced = pointCloudPath+"processedTestReduced/"
         generatedTest = pointCloudPath+"generatedTest/"
         rawSmallPc = rawTrain + "bildstein_station3_xyz_intensity_rgb.hdf5"
         procSmallPc = processedTrain + "bildstein_station3_xyz_intensity_rgb.npy"

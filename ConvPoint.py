@@ -1,7 +1,9 @@
-from dataTool import ReadLabels, modelPath, DataTool
+from dataTool import ReadLabels, ReadXYZ, VisualizePointCloudClassesAsync, modelPath, DataTool
 from imports import *
 import math
 import numpy as np
+from time import time    
+
 
 import tensorflow as tf
 from tensorflow.keras.models import Model
@@ -176,6 +178,11 @@ class Semantic3D(Const):
                 "stgallencathedral_station1_intensity_rgb" : "stgallencathedral1",
                 "stgallencathedral_station3_intensity_rgb" : "stgallencathedral3",
                 "stgallencathedral_station6_intensity_rgb" : "stgallencathedral6",
+
+                "MarketplaceFeldkirch_Station4_rgb_intensity-reduced" : "marketsquarefeldkirch4-reduced",
+                "sg27_station10_rgb_intensity-reduced" : "sg27_10-reduced",
+                "sg28_Station2_rgb_intensity-reduced" : "sg28_2-reduced",
+                "StGallenCathedral_station6_rgb_intensity-reduced" : "stgallencathedral6-reduced",
                 }
 
 class Curbs(Const):        
@@ -1359,6 +1366,8 @@ def GenerateData(modelPath, testFiles, consts, outputFolder, NameIncludeModelInf
         print("Done in {:02d}:{:02d} min.".format(int((time() - t)/60), int((time() - t)%60)))
 
 def GenerateLargeData(modelPath, voxelFiles, consts, outputFolder, orgFiles = None, replace = False, Upscale = True, NameIncludeModelInfo = False):
+    from time import time
+
     model, _ = LoadModel(modelPath, consts)
 
     if(not NameIncludeModelInfo):
@@ -1441,14 +1450,13 @@ def GenerateFile(model, file, consts, outputFile, saveScores = True):
     # create the scores for all points
     indexes = nearest_correspondance(pts_src.astype(np.float32), xyzrgb.astype(np.float32), K=1)
     scores = scores[indexes]
-
+    
     if saveScores:
         scoresFile = outputFile.replace(".txt", "_scores.npy")
         np.save(scoresFile, scores)
         print(f"Scores saved to: {scoresFile}")
-
-    # scores = scores.argmax(1) + 1 #because all class are shifted to avoid 0 - unclassified
-    scores = scores.argmax(1) #because all class are shifted to avoid 0 - unclassified
+        
+    scores = scores.argmax(1) + 1 #because all class are shifted to avoid 0 - unclassified
     
     print(f"class 0: {len(np.where(scores == 0)[0])}, class 1: {len(np.where(scores == 1)[0])}")
 
@@ -1521,7 +1529,7 @@ def GenerateLargeFile(model, voxelFile, originalFile, consts, outputFile, Upscal
 
 def UpscaleFilesAsync(modelPath, voxelFolder, orgFolder, savePath):
     import time
-    notifyDevice = Notify()
+    # notifyDevice = Notify()
 
     savePath = savePath + Paths.FileName(modelPath)
 
@@ -1537,7 +1545,7 @@ def UpscaleFilesAsync(modelPath, voxelFolder, orgFolder, savePath):
                     
         if(len(fileNames) == 0):        
             print("Done upscaling files")
-            notifyDevice.send("Done upscaling files")
+            # notifyDevice.send("Done upscaling files")
             return
 
         for file in Paths.GetFiles(savePath+"/vox_lbl/", onlyNames=True, withoutExtension=True, findExtesions=('.npy')):                
@@ -1837,11 +1845,11 @@ if __name__ == "__main__":
     modelPath = None
 
     # consts = NPM3D()
-    # consts = Semantic3D()
-    consts = Curbs()
+    consts = Semantic3D()
+    # consts = Curbs()
 
-    consts.noFeature = True
-    # consts.Fusion = True
+    # consts.noFeature = True
+    consts.Fusion = True
     # consts.Scale = True
     consts.Rotate = True
     # consts.Mirror = True
@@ -1851,7 +1859,7 @@ if __name__ == "__main__":
     testFiles = consts.TestFiles()
     trainFiles = consts.TrainFiles()
 
-    modelPath = "Curbs(11&2)(noFeature)(Rotate)_71f9dea753db435ba7947d01e6a476c7_23_train(73.1)_val(64.6).h5"
+    modelPath = "Sem3D(vox)(fusion)(FullAugment)_3_train(86.2)_val(79.5).h5"
     # modelPath = "Curbs(7&1)(noFeature)(Rotate)_21bdbe6aa82d4e259526ab46577e795a_25_train(75.1)_val(60.7).h5"
     # modelPath = ["Sem3D(vox)(RGB)(FullAugment)_55_train(85.7)_val(79.9)", "Sem3D(NOCOL)_50_train(87.4)_val(69.1)"]
     # modelPath = ["NPM3D(80&5)(RGB)(NoScale)_28_train(88.3)_val(73.2).h5", "NPM3D(80&5)(NOCOL)(FullAugment)_28_train(87.3)_val(71.5).h5"]
