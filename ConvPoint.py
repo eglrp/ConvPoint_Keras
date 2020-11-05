@@ -195,13 +195,13 @@ class Curbs(Const):
     Paths = Paths.Curbs
 
     if os.path.isdir("C:/Program Files"):
-        batchSize = 16
+        batchSize = 8
     else:
         batchSize = 25
 
     testFiles = [
                     "park_extracted.npy",
-                    "SmallArea2.npy",
+                    "Jelskio_str_trimmed.npy",
                 ]
     
     excludeFiles = [
@@ -1078,6 +1078,8 @@ class TrainSequence(Sequence):
     def __init__(self, filelist, iteration_number, consts : Const, dataAugmentation = True):
         self.filelist = filelist
         self.ptsList = [np.load(file) for file in self.filelist]
+        self.ptsList = sorted(self.ptsList, key=len)
+        self.ptsListCount = np.cumsum([len(pts) for pts in self.ptsList])
 
         self.cts = consts
         self.dataAugmentation = dataAugmentation
@@ -1106,8 +1108,8 @@ class TrainSequence(Sequence):
         
         for i in range(self.cts.batchSize):
             # load the data
-            index = random.randint(0, len(self.filelist)-1)
-            pts = self.ptsList[index]
+            ptIdx = random.randint(0, self.ptsListCount[-1])
+            pts = self.ptsList[np.argmax(self.ptsListCount >= ptIdx)]
             
             # if(self.cts.featureComponents == 1):
             #     keepPts = (pts[:, 4] != 0)
@@ -1845,11 +1847,11 @@ if __name__ == "__main__":
     modelPath = None
 
     # consts = NPM3D()
-    consts = Semantic3D()
-    # consts = Curbs()
+    # consts = Semantic3D()
+    consts = Curbs()
 
-    # consts.noFeature = True
-    consts.Fusion = True
+    consts.noFeature = True
+    # consts.Fusion = True
     # consts.Scale = True
     consts.Rotate = True
     # consts.Mirror = True

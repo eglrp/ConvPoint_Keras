@@ -56,8 +56,8 @@ class Paths:
     class Curbs:
         pointCloudPath = mainPath + "curbs/"
     
-        processedTrain = pointCloudPath+"processedTrain/"
-        processedTest = pointCloudPath+"processedTest/"
+        processedTrain = pointCloudPath+"processedTrain/forSegmentation(10cmVoxels)/"
+        processedTest = pointCloudPath+"processedTest/forSegmentation(10cmVoxels)/"
 
     class NPM3D:
         pointCloudPath = mainPath + "NPM3D/"
